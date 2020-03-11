@@ -1,0 +1,8 @@
+# Python
+
+__pycache__/
+.ipynb_checkpoints/
+
+# Data
+
+resources/
