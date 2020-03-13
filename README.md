@@ -6,8 +6,17 @@ The goal of this project, named *Automatic Detection Of Photovoltaic Panels Thro
 
 ## Implementation
 
-* [PyTorch](https://pytorch.org/)
-* [U-Net](https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/)
+The [PyTorch](https://pytorch.org/) library has been used to implement and train several neural networks [models](python/models.py) one of which is the well known [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/abs/1505.04597).
+
+### Notebooks
+
+If you wish to run the [Jupyter](https://jupyter.org/) notebook(s), you will need to install several `Python` packages including `torch`, `torchvision`, `matplotlib`, ...
+
+Alternatively, using `pip3`
+
+```bash
+pip3 install -r requirements.txt -y
+```
 
 ## Training data
 
@@ -24,9 +33,15 @@ wget "https://ndownloader.figshare.com/articles/3385804/versions/1" -O Stockton.
 mkdir resources
 unzip polygons.zip -d resources/polygons/
 unzip Fresno.zip -d resources/Fresno/
-unzip resources/Modesto.zip -d resources/Modesto/
-unzip resources/Oxnard.zip -d resources/Oxnard/
-unzip resources/Stockton.zip -d resources/Stockton/
+unzip Modesto.zip -d resources/Modesto/
+unzip Oxnard.zip -d resources/Oxnard/
+unzip Stockton.zip -d resources/Stockton/
+```
+
+and, afterwards,
+
+```bash
+python3 python/dataset.py
 ```
 
 [duke-dataset]: https://energy.duke.edu/content/distributed-solar-pv-array-location-and-extent-data-set-remote-sensing-object-identification
