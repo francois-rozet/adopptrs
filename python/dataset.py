@@ -91,7 +91,7 @@ class LargeDataset(data.IterableDataset):
 		for i in range(start, len(self.data), step):
 			imagename, maskname, boxes = self.data[i]
 
-			image = np.array(Image.open(imagename))
+			image = np.array(Image.open(imagename).convert('RGB'))
 			mask = np.array(Image.open(maskname))
 
 			for xmin, ymin, xmax, ymax in boxes:
