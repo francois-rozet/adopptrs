@@ -5,7 +5,6 @@
 # Imports #
 ###########
 
-import copy
 import numpy as np
 import time
 import torch
@@ -17,25 +16,26 @@ import torch
 
 def train_epoch(model, loader, criterion, optimizer):
 	model.train()
-	losses = list()
+	losses = []
 
 	for inputs, targets in loader:
 		inputs = inputs.cuda()
 		targets = targets.cuda()
 		outputs = model(inputs)
 
-		loss = criterion(outputs, targets)
+		loss = criterion(targets, outputs)
 		losses.append(loss.item())
 
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
 
-	return np.mean(losses), np.std(losses)
+	return losses
 
-def eval(model, loader, criterion):
+
+def eval(model, loader, metrics):
 	model.eval()
-	losses = list()
+	values = []
 
 	with torch.no_grad():
 		for inputs, targets in loader:
@@ -43,40 +43,39 @@ def eval(model, loader, criterion):
 			targets = targets.cuda()
 			outputs = model(inputs)
 
-			loss = criterion(outputs, targets)
-			losses.append(loss.item())
+			values.append(
+				[metric(targets, outputs).item() for metric in metrics]
+			)
 
-	return np.mean(losses), np.std(losses)
+	return values
 
-def train(model, loaders, criterion, optimizer, epochs=10):
-	best_model = None
-	best_loss = 1e10
 
-	for epoch in range(epochs):
-		print('Epoch {}'.format(epoch + 1))
+def train(model, loaders, criterion, optimizer, epochs, shuffle=True):
+	for epoch in epochs:
 		print('-' * 10)
+		print('Epoch {}'.format(epoch))
 
 		start = time.time()
 
 		# Training
-		mean, std = train_epoch(model, loaders[0], criterion, optimizer)
+		losses = train_epoch(model, loaders[0], criterion, optimizer)
+		mean, std = np.mean(losses), np.std(losses)
 		print('Training loss = {} +- {}'.format(mean, std))
 
 		# Validation
-		mean, std = eval(model, loaders[1], criterion)
+		losses = eval(model, loaders[1], [criterion])
+		mean, std = np.mean(losses), np.std(losses)
 		print('Validation loss = {} +- {}'.format(mean, std))
-
-		if mean < best_loss:
-			best_loss = mean
-			best_model = copy.deepcopy(model.state_dict())
-			print('New best model')
 
 		elapsed = time.time() - start
 
 		print('{:.0f}m{:.0f}s elapsed'.format(elapsed // 60, elapsed % 60))
-		print('-' * 10)
 
-	return best_model
+		yield epoch, mean
+
+		# Shuffling
+		if shuffle:
+			loaders[0].dataset.shuffle()
 
 
 ########
@@ -85,52 +84,87 @@ def train(model, loaders, criterion, optimizer, epochs=10):
 
 if __name__ == '__main__':
 	# Imports
+	import argparse
 	import json
 	import os
+	import random
+	import sys
 
 	from torch.utils.data import DataLoader
 	from torch.optim import Adam
-	from datetime import datetime
 
-	from dataset import LargeDataset
+	from dataset import LargeDataset, RandomTurn
 	from models import UNet
 	from criterions import DiceLoss
 
+	# Arguments
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--log', default=None)
+	parser.add_argument('--name', default='unet')
+	parser.add_argument('--resume', type=int, default=1)
+	args = parser.parse_args()
+
+	# Log file
+	if args.log is not None:
+		sys.stdout = open(args.log, 'a')
+
 	# Datasets
 	with open('products/json/data.json', 'r') as f:
-		data = json.load(f)
+		data = [
+			('resources/' + x, 'resources/' + y, box)
+			for x, y, box in json.load(f)
+		]
 
-	np.random.seed(0)
-	np.random.shuffle(data)
+	random.seed(0)
+	random.shuffle(data)
 
-	for _, _, boxes in data:
-		np.random.shuffle(boxes)
-
-	trainset = LargeDataset(data[:350], origin='resources/')
-	validset = LargeDataset(data[350:400], origin='resources/')
-	testset  = LargeDataset(data[400:450], origin='resources/')
+	trainset = RandomTurn(LargeDataset(data[:350], transform='tensor', color='jitter'))
+	validset = LargeDataset(data[350:400], transform='tensor')
 
 	# Dataloaders
 	trainloader = DataLoader(trainset, batch_size=5)
 	validloader = DataLoader(validset, batch_size=5)
-	testloader = DataLoader(testset, batch_size=1)
 
 	# Model
-	model = UNet(3, 1)
-	model.cuda()
+	model = UNet(3, 1).cuda()
+
+	os.makedirs('products/models/', exist_ok=True)
+	basename = 'products/models/' + args.name
+
+	if args.resume > 1:
+		modelname = '{}_{:03d}.pth'.format(basename, args.resume - 1)
+		model.load_state_dict(torch.load(modelname))
+
+	# Parameters
+	epochs = 100
+	lr, wd = 1e-3, 1e-4
 
 	# Criterion and optimizer
-	criterion = DiceLoss()
-	optimizer = Adam(model.parameters(), lr=1e-3)
+	criterion = DiceLoss(smooth=1.)
+	optimizer = Adam(model.parameters(), lr=lr, weight_decay=wd)
 
 	# Training
-	best = train(model, (trainloader, validloader), criterion, optimizer, 10)
-	model.load_state_dict(best)
+	best_loss = 1.
+	epochs = range(args.resume, args.resume + epochs)
 
-	date = datetime.now().strftime('%Y-%m-%d_%Hh%M')
-	os.makedirs('products/models/', exist_ok=True)
-	torch.save(best, 'products/models/unet_' + date + '.pth')
+	gen = train(
+		model,
+		(trainloader, validloader),
+		criterion,
+		optimizer,
+		epochs
+	)
 
-	# Testing
-	mean, std = eval(model, testloader, criterion)
-	print('Testing loss = {} +- {}'.format(mean, std))
+	for epoch, loss in gen:
+		if loss < best_loss or epoch == epochs[-1]:
+			best_loss = loss
+
+			modelname = '{}_{:03d}.pth'.format(basename, epoch)
+
+			print('Saving {}'.format(modelname))
+
+			torch.save(model.state_dict(), modelname)
+
+		if args.log is not None:
+			sys.stdout.close()
+			sys.stdout = open(args.log, 'a')

@@ -5,113 +5,110 @@
 # Imports #
 ###########
 
-import numpy as np
+import random
+import torch
 
 from PIL import Image
 from torch.utils import data
 from torchvision import transforms
 
 
+#############
+# Functions #
+#############
+
+def to_pil(tensor):
+	'''Converts a tensor to a PIL image.'''
+	return transforms.functional.to_pil_image(tensor)
+
+
 ###########
 # Classes #
 ###########
 
-class Augmenter(data.IterableDataset):
-	'''Iterable image augmenter.'''
-
-	def __init__(self, image, mask):
-		self.image = image
-		self.mask = mask
-
-	def __len__(self):
-		return len(Augmenter.functions())
-
-	def __iter__(self):
-		for f, g in Augmenter.functions():
-			if f is None:
-				newimage = self.image
-			else:
-				newimage = f(self.image).astype(np.uint8)
-
-			if g is None:
-				newmask = self.mask
-			else:
-				newmask = g(self.mask).astype(np.uint8)
-
-			yield newimage, newmask
-
-	@staticmethod
-	def functions():
-		return [
-			# Flip
-			(np.flipud, np.flipud),
-			(np.fliplr, np.fliplr),
-			# Rotation
-			(lambda x: np.rot90(x, 1), lambda x: np.rot90(x, 1)),
-			(lambda x: np.rot90(x, 2), lambda x: np.rot90(x, 2)),
-			(lambda x: np.rot90(x, 3), lambda x: np.rot90(x, 3)),
-			# Brightness
-			(lambda x: 0.8 * x, None),
-			(lambda x: 0.9 * x, None),
-			(lambda x: 0.8 * x + 0.2 * 255, None),
-			(lambda x: 0.9 * x + 0.1 * 255, None)
-		]
-
-
 class LargeDataset(data.IterableDataset):
 	'''Iterable dataset for large images.'''
 
-	def __init__(self, data, origin=None):
-		self.data = data
+	def __init__(self, data, transform=None, color=None):
+		super().__init__()
 
-		if origin is not None:
-			for x in self.data:
-				x[0] = origin + x[0]
-				x[1] = origin + x[1]
+		self.data = data
+		self._len = 0
+
+		if transform is None:
+			self.transform = lambda x: x
+		elif transform == 'tensor':
+			self.transform = transforms.ToTensor()
+		else:
+			self.transform = transform
+
+		if color is None:
+			self.color = lambda x: x
+		elif color == 'jitter':
+			self.color = transforms.ColorJitter(0.25, 0.33, 0.33)
+		else:
+			self.color = color
 
 	def __len__(self):
-		m = len(Augmenter(None, None)) + 1
+		if self._len == 0:
+			for _, _, boxes in self.data:
+				self._len += len(boxes)
 
-		n = 0
-		for _, _, boxes in self.data:
-			n += len(boxes) * m
-
-		return n
+		return self._len
 
 	def __iter__(self):
-		# Multiprocessing
-		worker = data.get_worker_info()
+		for imagename, maskname, boxes in self.data:
+			image = Image.open(imagename)
+			mask = Image.open(maskname)
 
-		if worker is None: # single process
-			start, step = 0, 1
-		else:
-			start, step = worker.id, worker.num_workers
+			image = self.color(image.convert('RGB'))
 
-		# Iterations
-		for i in range(start, len(self.data), step):
-			imagename, maskname, boxes = self.data[i]
+			for box in boxes:
+				yield (
+					self.transform(image.crop(box)),
+					self.transform(mask.crop(box))
+				)
 
-			image = np.array(Image.open(imagename).convert('RGB'))
-			mask = np.array(Image.open(maskname))
+	def shuffle(self):
+		'''Shuffles dataset.'''
+		random.shuffle(self.data)
+		for _, _, boxes in self.data:
+			random.shuffle(boxes)
 
-			for xmin, ymin, xmax, ymax in boxes:
-				subimage = image[xmin:xmax, ymin:ymax, :]
-				submask = mask[xmin:xmax, ymin:ymax]
 
-				yield self.transform(subimage), self.transform(submask)
+class RandomTurn(data.IterableDataset):
+	'''Iterable random dataset turner.'''
 
-				for newimage, newmask in Augmenter(subimage, submask):
-					yield self.transform(newimage), self.transform(newmask)
+	flip = [
+		lambda x: x,
+		lambda x: x.flip(1),
+		lambda x: x.flip(2)
+	]
 
-	@staticmethod
-	def transform(array):
-		'''Transforms numpy image array into torch tensor.'''
-		return transforms.ToTensor()(array)
+	rotate = [
+		lambda x: x,
+		lambda x: x.rot90(1, [1, 2]),
+		lambda x: x.rot90(2, [1, 2]),
+		lambda x: x.rot90(3, [1, 2])
+	]
 
-	@staticmethod
-	def revert(tensor):
-		'''Transforms torch tensor into PIL image.'''
-		return transforms.functional.to_pil_image(tensor)
+	def __init__(self, dataset):
+		super().__init__()
+
+		self.dataset = dataset
+
+	def __len__(self):
+		return len(self.dataset)
+
+	def __iter__(self):
+		for input, target in self.dataset:
+			f = random.choice(self.flip)
+			g = random.choice(self.rotate)
+
+			yield g(f(input)), g(f(target))
+
+	def __getattr__(self, name):
+		return getattr(self.dataset, name)
 
 
 ########
@@ -124,6 +121,7 @@ if __name__ == '__main__':
 	# Imports
 	import cv2
 	import json
+	import numpy as np
 	import os
 
 	# Parameters
@@ -139,7 +137,7 @@ if __name__ == '__main__':
 		polygons = json.load(f)['polygons']
 
 	# Table {imagename: [polygon, ...], ...}
-	table = dict()
+	table = {}
 
 	for p in polygons:
 		imagename = p['city'] + '/' + p['image_name']
@@ -174,12 +172,12 @@ if __name__ == '__main__':
 		cv2.imwrite(origin + maskname + ext, mask)
 
 		## Subimage locations
-		boxes = list()
+		boxes = []
 
 		for x in range(0, mask.shape[0] - size, step):
 			for y in range(0, mask.shape[1] - size, step):
 				if np.any(mask[x:x+size, y:y+size]):
-					boxes.append((x, y, x+size, y+size))
+					boxes.append((y, x, y+size, x+size))
 
 		data.append((
 			imagename + ext,

@@ -8,27 +8,28 @@
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-from dataset import LargeDataset
+from dataset import to_pil
 
 
 #############
 # Functions #
 #############
 
-def flatten(array, depth=1):
-	'''Flattens @array into a list up to depth @depth.'''
-	if depth == 0:
+def flatten(array, n=1):
+	'''Flattens an array into a list.'''
+	if n == 0:
 		return array
 	else:
 		l = list()
 
 		for i in array:
-			l.extend(flatten(i, depth - 1))
+			l.extend(flatten(i, n - 1))
 
 		return l
 
+
 def plot_images(images, ncols=2, zoom=4):
-	'''Plots a list of images as a grid with @ncols columns.'''
+	'''Plots a list of images as a grid.'''
 	nrows = len(images) // ncols
 
 	# Initialize grid
@@ -40,13 +41,12 @@ def plot_images(images, ncols=2, zoom=4):
 
 	# Plot images
 	for i in range(len(images)):
-		pil = LargeDataset.revert(images[i])
+		ax[i // ncols, i % ncols].imshow(to_pil(images[i]))
 
-		if pil.mode == 'L':
-			ax[i // ncols, i % ncols].imshow(pil, cmap=cm.gray)
-		else:
-			ax[i // ncols, i % ncols].imshow(pil)
 
 def plot_alongside(*argv):
 	'''Plots image lists alongside.'''
-	plot_images(flatten([list(t) for t in zip(*argv)]), len(argv))
+	plot_images(
+		flatten(map(lambda x: list(x), zip(*argv))),
+		len(argv)
+	)
