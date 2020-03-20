@@ -43,10 +43,12 @@ class UNet(nn.Module):
 		self.down1 = double_conv(64, 128)
 		self.down2 = double_conv(128, 256)
 		self.down3 = double_conv(256, 512)
+		self.down4 = double_conv(512, 1024)
 
 		self.maxpool = nn.MaxPool2d(2)
 		self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
+		self.up4 = double_conv(512 + 1024, 512)
 		self.up3 = double_conv(256 + 512, 256)
 		self.up2 = double_conv(128 + 256, 128)
 		self.up1 = double_conv(128 + 64, 64)
@@ -67,9 +69,16 @@ class UNet(nn.Module):
 		d3 = self.down2(x)
 
 		x = self.maxpool(d3)
-		x = self.down3(x)
+		d4 = self.down3(x)
+
+		x = self.maxpool(d4)
+		x = self.down4(x)
 
 		# Uphill
+		x = self.upsample(x)
+		x = torch.cat([x, d4], dim=1)
+		x = self.up4(x)
+
 		x = self.upsample(x)
 		x = torch.cat([x, d3], dim=1)
 		x = self.up3(x)
