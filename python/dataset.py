@@ -5,6 +5,8 @@
 # Imports #
 ###########
 
+import json
+import os
 import random
 import torch
 
@@ -29,7 +31,7 @@ def to_pil(tensor):
 class LargeDataset(data.IterableDataset):
 	'''Iterable dataset for large images.'''
 
-	def __init__(self, data, transform=None, color=None):
+	def __init__(self, data, transform=None, color=None, shuffle=False):
 		super().__init__()
 
 		self.data = data
@@ -49,6 +51,8 @@ class LargeDataset(data.IterableDataset):
 		else:
 			self.color = color
 
+		self.shuffle = shuffle
+
 	def __len__(self):
 		if self._len == 0:
 			for _, _, boxes in self.data:
@@ -57,11 +61,18 @@ class LargeDataset(data.IterableDataset):
 		return self._len
 
 	def __iter__(self):
+		if self.shuffle:
+			random.shuffle(self.data)
+
 		for imagename, maskname, boxes in self.data:
+
 			image = Image.open(imagename)
 			mask = Image.open(maskname)
 
 			image = self.color(image.convert('RGB'))
+
+			if self.shuffle:
+				random.shuffle(boxes)
 
 			for box in boxes:
 				yield (
@@ -69,11 +80,16 @@ class LargeDataset(data.IterableDataset):
 					self.transform(mask.crop(box))
 				)
 
-	def shuffle(self):
-		'''Shuffles dataset.'''
-		random.shuffle(self.data)
-		for _, _, boxes in self.data:
-			random.shuffle(boxes)
+	@staticmethod
+	def load(filename, path=''):
+		'''Load data file.'''
+		with open(filename, 'r') as f:
+			data = [
+				(os.path.join(path, x), os.path.join(path, y), box)
+				for x, y, box in json.load(f)
+			]
+
+		return data
 
 
 class RandomTurn(data.IterableDataset):
@@ -107,33 +123,34 @@ class RandomTurn(data.IterableDataset):
 
 			yield g(f(input)), g(f(target))
 
-	def __getattr__(self, name):
-		return getattr(self.dataset, name)
-
 
 ########
 # Main #
 ########
 
 if __name__ == '__main__':
-	'''Creation of masks and computation of subimage locations.'''
-
 	# Imports
+	import argparse
 	import cv2
-	import json
 	import numpy as np
-	import os
 
-	# Parameters
-	origin = 'resources/'
-	destination = 'products/json/'
-	ext = '.tif'
+	# Arguments
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-d', '--destination', default='../products/json/', help='destination of the file listing image-mask pairs')
+	parser.add_argument('-e', '--ext', default='.tif', help='extension of the images')
+	parser.add_argument('-n', '--name', default='data.json', help='name of the file listing image-mask pairs')
+	parser.add_argument('-m', '--masks', default=False, action='store_true', help='recompute masks')
+	parser.add_argument('-o', '--output', default=None, help='standard output file')
+	parser.add_argument('-p', '--path', default='../resources/', help='path to resources')
+	parser.add_argument('-s', '--size', type=int, default=256, help='subimages size')
+	args = parser.parse_args()
 
-	size = 256
-	step = 128
+	# Log file
+	if args.output is not None:
+		sys.stdout = open(args.output, 'a')
 
 	# Polygons
-	with open(origin + 'polygons/SolarArrayPolygons.json', 'r') as f:
+	with open(os.path.join(args.path, 'polygons/SolarArrayPolygons.json'), 'r') as f:
 		polygons = json.load(f)['polygons']
 
 	# Table {imagename: [polygon, ...], ...}
@@ -157,36 +174,50 @@ if __name__ == '__main__':
 	data = []
 
 	for imagename, contours in table.items():
-		if not os.path.exists(origin + imagename + ext):
+		if not os.path.exists(os.path.join(args.path, imagename + args.ext)):
 			continue
 
-		## Get image shape
-		image = Image.open(origin + imagename + ext)
-		mask = np.zeros((image.height, image.width), np.uint8)
+		print('-' * 10)
+		print('Loading {}'.format(imagename + args.ext))
 
-		## Draw polygons interior
-		cv2.drawContours(mask, contours, -1, color=255, thickness=-1)
-
-		## Save mask
 		maskname = imagename + '_mask'
-		cv2.imwrite(origin + maskname + ext, mask)
+
+		if os.path.exists(os.path.join(args.path, maskname + args.ext)) and not args.masks:
+			print('Loading {}'.format(maskname + args.ext))
+
+			mask = Image.open(os.path.join(args.path, maskname + args.ext))
+			mask = np.array(mask).astype(np.uint8)
+		else:
+			print('Creating {}'.format(maskname + args.ext))
+
+			## Get image shape
+			image = Image.open(os.path.join(args.path, imagename + args.ext))
+			mask = np.zeros((image.height, image.width), np.uint8)
+
+			## Draw polygons interior
+			cv2.drawContours(mask, contours, -1, color=255, thickness=-1)
+
+			## Save mask
+			cv2.imwrite(os.path.join(args.path, maskname + args.ext), mask)
 
 		## Subimage locations
 		boxes = []
 
-		for x in range(0, mask.shape[0] - size, step):
-			for y in range(0, mask.shape[1] - size, step):
-				if np.any(mask[x:x+size, y:y+size]):
-					boxes.append((y, x, y+size, x+size))
+		for x in range(0, mask.shape[0] - args.size, args.size // 2):
+			for y in range(0, mask.shape[1] - args.size, args.size // 2):
+				if np.any(mask[x:x+args.size, y:y+args.size]):
+					boxes.append((y, x, y+args.size, x+args.size))
 
 		data.append((
-			imagename + ext,
-			maskname + ext,
+			imagename + args.ext,
+			maskname + args.ext,
 			boxes
 		))
 
-	# mkdir -p destination
-	os.makedirs(destination, exist_ok=True)
+		print('Found {} boxes'.format(len(boxes)))
 
-	with open(destination + 'data.json', 'w') as f:
+	# mkdir -p destination
+	os.makedirs(args.destination, exist_ok=True)
+
+	with open(os.path.join(args.destination, args.name), 'w') as f:
 		json.dump(data, f)

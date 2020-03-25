@@ -20,9 +20,9 @@ class DiceLoss(nn.Module):
 
 		self.smooth = smooth
 
-	def forward(self, targets, outputs):
-		inter = (targets * outputs).sum()
-		union = targets.sum() + outputs.sum()
+	def forward(self, outputs, targets):
+		inter = (outputs * targets).sum()
+		union = outputs.sum() + targets.sum()
 		iou = (2. * inter + self.smooth) / (union + self.smooth)
 
 		return 1. - iou
@@ -34,8 +34,8 @@ class TP(nn.Module):
 	def __init__(self):
 		super().__init__()
 
-	def forward(self, targets, outputs):
-		return (targets * outputs).sum()
+	def forward(self, outputs, targets):
+		return (outputs * targets).sum()
 
 
 class TN(nn.Module):
@@ -44,8 +44,8 @@ class TN(nn.Module):
 	def __init__(self):
 		super().__init__()
 
-	def forward(self, targets, outputs):
-		return ((1 - targets) * (1 - outputs)).sum()
+	def forward(self, outputs, targets):
+		return ((1 - outputs) * (1 - targets)).sum()
 
 
 class FP(nn.Module):
@@ -54,8 +54,8 @@ class FP(nn.Module):
 	def __init__(self):
 		super().__init__()
 
-	def forward(self, targets, outputs):
-		return ((1 - targets) * outputs).sum()
+	def forward(self, outputs, targets):
+		return (outputs * (1 - targets)).sum()
 
 
 class FN(nn.Module):
@@ -64,5 +64,5 @@ class FN(nn.Module):
 	def __init__(self):
 		super().__init__()
 
-	def forward(self, targets, outputs):
-		return (targets * (1 - outputs)).sum()
+	def forward(self, outputs, targets):
+		return ((1 - outputs) * targets).sum()
