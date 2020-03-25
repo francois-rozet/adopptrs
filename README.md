@@ -10,12 +10,20 @@ The [PyTorch](https://pytorch.org/) library has been used to implement and train
 
 ### Notebooks
 
-If you wish to run the [Jupyter](https://jupyter.org/) notebook(s), you will need to install several `Python` packages including `torch`, `torchvision`, `matplotlib`, ...
+If you wish to run the [Jupyter](https://jupyter.org/) notebook(s), you will need to install several `Python` packages including `jupyter`, `torch`, `torchvision`, `opencv`, `matplotlib` and their dependencies.
 
-Alternatively, using `pip3`
+To do so safely, one should create a new environement :
 
 ```bash
+virtualenv ~/adopptrs -p python3
+source ~/adopptrs/bin/activate
 pip3 install -r requirements.txt -y
+```
+
+or with `Anaconda`
+
+```bash
+conda env create -f environment.yml
 ```
 
 ## Training data
@@ -41,7 +49,7 @@ unzip Stockton.zip -d resources/Stockton/
 and, afterwards,
 
 ```bash
-python3 python/dataset.py
+python3 python/dataset.py --path resources/ --destination products/json/ --name data.json
 ```
 
 [duke-dataset]: https://energy.duke.edu/content/distributed-solar-pv-array-location-and-extent-data-set-remote-sensing-object-identification
