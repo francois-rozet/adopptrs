@@ -66,7 +66,7 @@ if __name__ == '__main__':
 	from torch.utils.data import DataLoader
 	from torch.optim import Adam
 
-	from dataset import LargeDataset, RandomTurn
+	from dataset import LargeDataset, ColorJitter, RandomFilter, RandomTranspose, ToTensor
 	from models import UNet
 	from criterions import DiceLoss
 
@@ -92,8 +92,8 @@ if __name__ == '__main__':
 	random.seed(0)
 	random.shuffle(data)
 
-	trainset = RandomTurn(LargeDataset(data[:350], transform='tensor', color='jitter', shuffle=True))
-	validset = LargeDataset(data[350:400], transform='tensor')
+	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(LargeDataset(data[:350], shuffle=True)))))
+	validset = ToTensor(LargeDataset(data[350:400]))
 
 	print('Training size = {}'.format(len(trainset)))
 	print('Validation size = {}'.format(len(validset)))
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 		device = torch.device('cpu')
 		print('CUDA unavailable')
 
-	model.to(device)
+	model = model.to(device)
 
 	os.makedirs(args.destination, exist_ok=True)
 	basename = os.path.join(args.destination, args.name)

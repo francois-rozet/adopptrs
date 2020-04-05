@@ -10,7 +10,7 @@ import os
 import random
 import torch
 
-from PIL import Image
+from PIL import Image, ImageFilter
 from torch.utils import data
 from torchvision import transforms
 
@@ -31,25 +31,18 @@ def to_pil(tensor):
 class LargeDataset(data.IterableDataset):
 	'''Iterable dataset for large images.'''
 
-	def __init__(self, data, transform=None, color=None, shuffle=False):
+	def __init__(self, data, in_ram=False, shuffle=False):
 		super().__init__()
 
 		self.data = data
 		self._len = 0
 
-		if transform is None:
-			self.transform = lambda x: x
-		elif transform == 'tensor':
-			self.transform = transforms.ToTensor()
-		else:
-			self.transform = transform
-
-		if color is None:
-			self.color = lambda x: x
-		elif color == 'jitter':
-			self.color = transforms.ColorJitter(0.25, 0.33, 0.33)
-		else:
-			self.color = color
+		self.in_ram = in_ram
+		if self.in_ram:
+			self.data = [
+				(Image.open(x).convert('RGB'), Image.open(y), z)
+				for x, y, z in self.data
+			]
 
 		self.shuffle = shuffle
 
@@ -64,21 +57,17 @@ class LargeDataset(data.IterableDataset):
 		if self.shuffle:
 			random.shuffle(self.data)
 
-		for imagename, maskname, boxes in self.data:
-
-			image = Image.open(imagename)
-			mask = Image.open(maskname)
-
-			image = self.color(image.convert('RGB'))
+		for image, mask, boxes in self.data:
+			if not self.in_ram:
+				image = Image.open(image).convert('RGB')
+				mask = Image.open(mask)
 
 			if self.shuffle:
 				random.shuffle(boxes)
 
 			for box in boxes:
-				yield (
-					self.transform(image.crop(box)),
-					self.transform(mask.crop(box))
-				)
+				yield image.crop(box), mask.crop(box)
+
 
 	@staticmethod
 	def load(filename, path=''):
@@ -92,36 +81,84 @@ class LargeDataset(data.IterableDataset):
 		return data
 
 
-class RandomTurn(data.IterableDataset):
-	'''Iterable random dataset turner.'''
+class RandomChoice(data.IterableDataset):
+	'''Apply a randomly picked transformation to each pair (input, target).'''
 
-	flip = [
-		lambda x: x,
-		lambda x: x.flip(1),
-		lambda x: x.flip(2)
-	]
-
-	rotate = [
-		lambda x: x,
-		lambda x: x.rot90(1, [1, 2]),
-		lambda x: x.rot90(2, [1, 2]),
-		lambda x: x.rot90(3, [1, 2])
-	]
-
-	def __init__(self, dataset):
+	def __init__(self, dataset, transforms, input_only=False):
 		super().__init__()
 
 		self.dataset = dataset
+		self.transforms = transforms
+		self.input_only = input_only
 
 	def __len__(self):
 		return len(self.dataset)
 
 	def __iter__(self):
 		for input, target in self.dataset:
-			f = random.choice(self.flip)
-			g = random.choice(self.rotate)
+			f = random.choice(self.transforms)
+			yield f(input), target if self.input_only else f(target)
 
-			yield g(f(input)), g(f(target))
+
+class ColorJitter(RandomChoice):
+	'''Color jitter.'''
+
+	def __init__(self, dataset, brightness=0.25, contrast=0.33, saturation=0.33, hue=0):
+		super().__init__(
+			dataset=dataset,
+			transforms=[transforms.ColorJitter(brightness, contrast, saturation, hue)],
+			input_only=True
+		)
+
+
+class RandomFilter(RandomChoice):
+	'''Random image filter.'''
+
+	def __init__(self, dataset):
+		super().__init__(
+			dataset=dataset,
+			transforms=[
+				lambda x: x,
+				lambda x: x.filter(ImageFilter.BLUR),
+				lambda x: x.filter(ImageFilter.DETAIL),
+				lambda x: x.filter(ImageFilter.EDGE_ENHANCE),
+				lambda x: x.filter(ImageFilter.EDGE_ENHANCE_MORE),
+				lambda x: x.filter(ImageFilter.SMOOTH),
+				lambda x: x.filter(ImageFilter.SMOOTH_MORE),
+				lambda x: x.filter(ImageFilter.SHARPEN)
+			],
+			input_only=True
+		)
+
+
+class RandomTranspose(RandomChoice):
+	'''Random image transpose.'''
+
+	def __init__(self, dataset):
+		super().__init__(
+			dataset=dataset,
+			transforms=[
+				lambda x: x,
+				lambda x: x.transpose(Image.FLIP_LEFT_RIGHT),
+				lambda x: x.transpose(Image.FLIP_TOP_BOTTOM),
+				lambda x: x.transpose(Image.ROTATE_90),
+				lambda x: x.transpose(Image.ROTATE_180),
+				lambda x: x.transpose(Image.ROTATE_270),
+				lambda x: x.transpose(Image.TRANSPOSE)
+			],
+			input_only=False
+		)
+
+
+class ToTensor(RandomChoice):
+	'''To Tensor.'''
+
+	def __init__(self, dataset):
+		super().__init__(
+			dataset=dataset,
+			transforms=[transforms.ToTensor()],
+			input_only=False
+		)
 
 
 ########
