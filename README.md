@@ -38,18 +38,20 @@ wget "https://ndownloader.figshare.com/articles/3385828/versions/1" -O Fresno.zi
 wget "https://ndownloader.figshare.com/articles/3385789/versions/1" -O Modesto.zip
 wget "https://ndownloader.figshare.com/articles/3385807/versions/1" -O Oxnard.zip
 wget "https://ndownloader.figshare.com/articles/3385804/versions/1" -O Stockton.zip
-mkdir resources
-unzip polygons.zip -d resources/polygons/
-unzip Fresno.zip -d resources/Fresno/
-unzip Modesto.zip -d resources/Modesto/
-unzip Oxnard.zip -d resources/Oxnard/
-unzip Stockton.zip -d resources/Stockton/
+mkdir -p resources/california/
+unzip polygons.zip -d resources/california/
+unzip Fresno.zip -d resources/california/
+unzip Modesto.zip -d resources/california/
+unzip Oxnard.zip -d resources/california/
+unzip Stockton.zip -d resources/california/
+rm *.zip resources/california/*.xml # optionally
 ```
 
-and, afterwards,
+Afterwards, the file `SolarArrayPolygons.json` has to be converted to the [VGG Image Annotator][via] format.
 
 ```bash
-python3 python/dataset.py --path resources/ --destination products/json/ --name data.json
+python3 python/dataset.py --output products/json/california.json --path resources/california/
 ```
 
 [duke-dataset]: https://energy.duke.edu/content/distributed-solar-pv-array-location-and-extent-data-set-remote-sensing-object-identification
+[via]: http://www.robots.ox.ac.uk/~vgg/software/via/

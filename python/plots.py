@@ -8,8 +8,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-from dataset import to_pil
-
 
 #############
 # Functions #
@@ -41,12 +39,13 @@ def plot_images(images, ncols=2, zoom=4):
 
 	# Plot images
 	for i in range(len(images)):
-		ax[i // ncols, i % ncols].imshow(to_pil(images[i]))
+		ax[i // ncols, i % ncols].imshow(images[i])
 
 
-def plot_alongside(*argv):
+def plot_alongside(*argv, zoom=4):
 	'''Plots image lists alongside.'''
 	plot_images(
 		flatten(map(lambda x: list(x), zip(*argv))),
-		len(argv)
+		len(argv),
+		zoom
 	)

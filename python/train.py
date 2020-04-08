@@ -58,26 +58,30 @@ def eval(model, loader, metrics):
 if __name__ == '__main__':
 	# Imports
 	import argparse
+	import csv
+	import json
 	import numpy as np
 	import os
 	import random
 	import sys
+	import via as VIA
 
 	from torch.utils.data import DataLoader
 	from torch.optim import Adam
 
-	from dataset import LargeDataset, ColorJitter, RandomFilter, RandomTranspose, ToTensor
+	from dataset import VIADataset, ColorJitter, RandomFilter, RandomTranspose, ToTensor
 	from models import UNet
 	from criterions import DiceLoss
 
 	# Arguments
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-d', '--destination', default='../products/models/', help='destination of the model(s)')
-	parser.add_argument('-j', '--json', default='../products/json/data.json', help='file listing image-mask pairs')
+	parser.add_argument('-i', '--input', default='../products/json/california.json', help='input VIA file')
 	parser.add_argument('-n', '--name', default='unet', help='name of the model')
 	parser.add_argument('-o', '--output', default=None, help='standard output file')
-	parser.add_argument('-p', '--path', default='../resources/', help='path to resources')
+	parser.add_argument('-p', '--path', default='../resources/california/', help='path to resources')
 	parser.add_argument('-r', '--resume', type=int, default=1, help='epoch at which to resume')
+	parser.add_argument('-s', '--stat', default='../products/csv/statistics.csv', help='statistics file')
 	args = parser.parse_args()
 
 	# Output file
@@ -87,13 +91,19 @@ if __name__ == '__main__':
 	print('-' * 10)
 
 	# Datasets
-	data = LargeDataset.load(args.json, args.path)
+	with open('../products/json/california.json', 'r') as f:
+		via = VIA.deformat(json.load(f))
+
+	keys = sorted(list(via.keys()))
 
 	random.seed(0)
-	random.shuffle(data)
+	random.shuffle(keys)
 
-	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(LargeDataset(data[:350], shuffle=True)))))
-	validset = ToTensor(LargeDataset(data[350:400]))
+	train_via = {key: via[key] for key in keys[:350]}
+	valid_via = {key: via[key] for key in keys[350:400]}
+
+	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(VIADataset(train_via, args.path, shuffle=True)))))
+	validset = ToTensor(VIADataset(valid_via, args.path))
 
 	print('Training size = {}'.format(len(trainset)))
 	print('Validation size = {}'.format(len(validset)))
@@ -124,6 +134,26 @@ if __name__ == '__main__':
 			print('Resuming from {}'.format(modelname))
 			model.load_state_dict(torch.load(modelname, map_location=device))
 
+	# Statistics
+	os.makedirs(os.path.dirname(args.stat), exist_ok=True)
+
+	if not os.path.exists(args.stat):
+		with open(args.stat, 'w', newline='') as f:
+			csv.writer(f).writerow([
+				'model',
+				'epoch',
+				'train_loss_mean',
+				'train_loss_std',
+				'train_loss_first',
+				'train_loss_second',
+				'train_loss_third',
+				'valid_loss_mean',
+				'valid_loss_std',
+				'valid_loss_first',
+				'valid_loss_second',
+				'valid_loss_third'
+			])
+
 	# Parameters
 	epochs = 100
 	lr, wd = 1e-3, 1e-4
@@ -147,21 +177,43 @@ if __name__ == '__main__':
 		start = time.time()
 
 		## Training set
-		losses = train_epoch(model, trainloader, criterion, optimizer)
-		mean, std = np.mean(losses), np.std(losses)
-		print('Training loss = {} +- {}'.format(mean, std))
+		train_losses = train_epoch(model, trainloader, criterion, optimizer)
 
 		## Validation set
-		losses = eval(model, validloader, [criterion])
-		mean, std = np.mean(losses), np.std(losses)
-		print('Validation loss = {} +- {}'.format(mean, std))
+		valid_losses = eval(model, validloader, [criterion])
 
 		elapsed = time.time() - start
 
 		print('{:.0f}m{:.0f}s elapsed'.format(elapsed // 60, elapsed % 60))
 
-		if mean < best_loss or epoch == epochs[-1]:
-			best_loss = mean
+		## Statistics
+		train_losses = np.array(train_losses)
+		valid_losses = np.array(valid_losses)
+
+		train_mean = train_losses.mean()
+		valid_mean = valid_losses.mean()
+
+		print('Training loss = {}'.format(train_losses.mean()))
+		print('Validation loss = {}'.format(valid_losses.mean()))
+
+		with open(args.stat, 'a', newline='') as f:
+			csv.writer(f).writerow([
+				args.name,
+				epoch,
+				np.mean(train_losses),
+				np.std(train_losses),
+				np.quantile(train_losses, 0.25),
+				np.quantile(train_losses, 0.5),
+				np.quantile(train_losses, 0.75),
+				np.mean(valid_losses),
+				np.std(valid_losses),
+				np.quantile(valid_losses, 0.25),
+				np.quantile(valid_losses, 0.5),
+				np.quantile(valid_losses, 0.75),
+			])
+
+		if valid_mean < best_loss or epoch == epochs[-1]:
+			best_loss = valid_mean
 
 			modelname = '{}_{:03d}.pth'.format(basename, epoch)
 

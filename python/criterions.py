@@ -31,38 +31,46 @@ class DiceLoss(nn.Module):
 class TP(nn.Module):
 	'''True Positive.'''
 
-	def __init__(self):
+	def __init__(self, threshold=0.5):
 		super().__init__()
 
+		self.threshold = threshold
+
 	def forward(self, outputs, targets):
-		return (outputs * targets).sum()
+		return ((outputs > self.threshold) * targets).sum()
 
 
 class TN(nn.Module):
 	'''True Negative.'''
 
-	def __init__(self):
+	def __init__(self, threshold=0.5):
 		super().__init__()
 
+		self.threshold = threshold
+
 	def forward(self, outputs, targets):
-		return ((1 - outputs) * (1 - targets)).sum()
+		return ((outputs < self.threshold) * (1 - targets)).sum()
 
 
 class FP(nn.Module):
 	'''False Positive.'''
 
-	def __init__(self):
+	def __init__(self, threshold=0.5):
 		super().__init__()
 
+		self.threshold = threshold
+
 	def forward(self, outputs, targets):
-		return (outputs * (1 - targets)).sum()
+		return ((outputs > self.threshold) * (1 - targets)).sum()
 
 
 class FN(nn.Module):
 	'''False Negative.'''
 
-	def __init__(self):
+	def __init__(self, threshold=0.5):
 		super().__init__()
 
+		self.threshold = threshold
+
 	def forward(self, outputs, targets):
-		return ((1 - outputs) * targets).sum()
+		return ((outputs < self.threshold) * targets).sum()

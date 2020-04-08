@@ -5,7 +5,8 @@
 # Imports #
 ###########
 
-import json
+import cv2
+import numpy as np
 import os
 import random
 import torch
@@ -24,61 +25,92 @@ def to_pil(tensor):
 	return transforms.functional.to_pil_image(tensor)
 
 
+def to_tensor(pic):
+	'''Converts a PIL image to a tensor.'''
+	return transforms.functional.to_tensor(pic)
+
+
+def to_mask(shape, polygons):
+	contours = [np.array(p, dtype=int) for p in polygons]
+
+	mask = np.zeros(shape, dtype=np.uint8)
+	cv2.drawContours(mask, contours, -1, color=255, thickness=-1)
+
+	return Image.fromarray(mask)
+
+
+def to_polygons(mask):
+	mask = np.array(mask)
+
+	_, mask = cv2.threshold(mask, 128, 255, cv2.THRESH_BINARY)
+	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+	polygons = [c[:, 0, :].tolist() for c in contours]
+
+	return polygons
+
+
 ###########
 # Classes #
 ###########
 
-class LargeDataset(data.IterableDataset):
-	'''Iterable dataset for large images.'''
+class VIADataset(data.IterableDataset):
+	'''Iterable VIA dataset.'''
 
-	def __init__(self, data, in_ram=False, shuffle=False):
-		super().__init__()
+	def __init__(self, via, path='./', size=256, shuffle=False):
+		self.via = {
+			os.path.join(path, key): value for key, value in via.items()
+			if os.path.exists(os.path.join(path, key))
+		}
 
-		self.data = data
-		self._len = 0
+		self.images = list(self.via.keys())
+		self.masks = {}
 
-		self.in_ram = in_ram
-		if self.in_ram:
-			self.data = [
-				(Image.open(x).convert('RGB'), Image.open(y), z)
-				for x, y, z in self.data
-			]
+		self.size = size
 
 		self.shuffle = shuffle
 
 	def __len__(self):
-		if self._len == 0:
-			for _, _, boxes in self.data:
-				self._len += len(boxes)
-
-		return self._len
+		if self.size is None:
+			return len(self.via)
+		else:
+			return sum(map(len, self.via.values()))
 
 	def __iter__(self):
 		if self.shuffle:
-			random.shuffle(self.data)
+			random.shuffle(self.images)
 
-		for image, mask, boxes in self.data:
-			if not self.in_ram:
-				image = Image.open(image).convert('RGB')
-				mask = Image.open(mask)
+		for imagename in self.images:
+			image = Image.open(imagename).convert('RGB')
 
-			if self.shuffle:
-				random.shuffle(boxes)
+			if imagename not in self.masks:
+				self.masks[imagename] = to_mask((image.width, image.height), self.via[imagename])
 
-			for box in boxes:
-				yield image.crop(box), mask.crop(box)
+			mask = self.masks[imagename]
 
+			if self.size is None:
+				yield image, mask
+			else:
+				if self.shuffle:
+					random.shuffle(self.via[imagename])
 
-	@staticmethod
-	def load(filename, path=''):
-		'''Load data file.'''
-		with open(filename, 'r') as f:
-			data = [
-				(os.path.join(path, x), os.path.join(path, y), box)
-				for x, y, box in json.load(f)
-			]
+				for polygon in self.via[imagename]:
+					left, upper = random.choice(polygon)
 
-		return data
+					# Transpose
+					left -= random.randrange(self.size)
+					upper -= random.randrange(self.size)
+
+					# Box
+					left = max(left, 0)
+					left = min(left, image.width - self.size)
+
+					upper = max(upper, 0)
+					upper = min(upper, image.height - self.size)
+
+					box = (left, upper, left + self.size, upper + self.size)
+
+					yield image.crop(box), mask.crop(box)
 
 
 class RandomChoice(data.IterableDataset):
@@ -122,9 +154,7 @@ class RandomFilter(RandomChoice):
 				lambda x: x.filter(ImageFilter.BLUR),
 				lambda x: x.filter(ImageFilter.DETAIL),
 				lambda x: x.filter(ImageFilter.EDGE_ENHANCE),
-				lambda x: x.filter(ImageFilter.EDGE_ENHANCE_MORE),
 				lambda x: x.filter(ImageFilter.SMOOTH),
-				lambda x: x.filter(ImageFilter.SMOOTH_MORE),
 				lambda x: x.filter(ImageFilter.SHARPEN)
 			],
 			input_only=True
@@ -150,13 +180,25 @@ class RandomTranspose(RandomChoice):
 		)
 
 
+class Scale(RandomChoice):
+	'''Scale image.'''
+	def __init__(self, dataset, scale):
+		super().__init__(
+			dataset=dataset,
+			transforms=[lambda x: x.resize(
+				(int(x.width * scale), int(x.height * scale))
+			)],
+			input_only=False
+		)
+
+
 class ToTensor(RandomChoice):
 	'''To Tensor.'''
 
 	def __init__(self, dataset):
 		super().__init__(
 			dataset=dataset,
-			transforms=[transforms.ToTensor()],
+			transforms=[to_tensor],
 			input_only=False
 		)
 
@@ -168,93 +210,36 @@ class ToTensor(RandomChoice):
 if __name__ == '__main__':
 	# Imports
 	import argparse
-	import cv2
-	import numpy as np
+	import json
+	import via as VIA
 
 	# Arguments
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-d', '--destination', default='../products/json/', help='destination of the file listing image-mask pairs')
 	parser.add_argument('-e', '--ext', default='.tif', help='extension of the images')
-	parser.add_argument('-n', '--name', default='data.json', help='name of the file listing image-mask pairs')
-	parser.add_argument('-m', '--masks', default=False, action='store_true', help='recompute masks')
-	parser.add_argument('-o', '--output', default=None, help='standard output file')
-	parser.add_argument('-p', '--path', default='../resources/', help='path to resources')
-	parser.add_argument('-s', '--size', type=int, default=256, help='subimages size')
+	parser.add_argument('-o', '--output', default='../products/json/california.json', help='output VIA file')
+	parser.add_argument('-p', '--path', default='../resources/california/', help='path to california resources')
 	args = parser.parse_args()
 
-	# Log file
-	if args.output is not None:
-		sys.stdout = open(args.output, 'a')
-
 	# Polygons
-	with open(os.path.join(args.path, 'polygons/SolarArrayPolygons.json'), 'r') as f:
-		polygons = json.load(f)['polygons']
+	with open(os.path.join(args.path, 'SolarArrayPolygons.json'), 'r') as f:
+		panels = json.load(f)['polygons']
 
-	# Table {imagename: [polygon, ...], ...}
-	table = {}
+	# VGG Image Annotations
+	via = {}
 
-	for p in polygons:
-		imagename = p['city'] + '/' + p['image_name']
-		contour = np.array(p['polygon_vertices_pixels'], dtype=int)
+	for panel in panels:
+		filename = panel['image_name'] + args.ext
+		polygon = panel['polygon_vertices_pixels']
 
 		## Skip dots and lines
-		if contour.shape[0] <= 2:
+		if not len(polygon) > 3:
 			continue
 
-		## Add to table
-		if imagename in table:
-			table[imagename].append(contour)
-		else:
-			table[imagename] = [contour]
+		## Add polygon
+		if filename not in via:
+			via[filename] = []
 
-	# Masks and subimages
-	data = []
+		via[filename].append(polygon)
 
-	for imagename, contours in table.items():
-		if not os.path.exists(os.path.join(args.path, imagename + args.ext)):
-			continue
-
-		print('-' * 10)
-		print('Loading {}'.format(imagename + args.ext))
-
-		maskname = imagename + '_mask'
-
-		if os.path.exists(os.path.join(args.path, maskname + args.ext)) and not args.masks:
-			print('Loading {}'.format(maskname + args.ext))
-
-			mask = Image.open(os.path.join(args.path, maskname + args.ext))
-			mask = np.array(mask).astype(np.uint8)
-		else:
-			print('Creating {}'.format(maskname + args.ext))
-
-			## Get image shape
-			image = Image.open(os.path.join(args.path, imagename + args.ext))
-			mask = np.zeros((image.height, image.width), np.uint8)
-
-			## Draw polygons interior
-			cv2.drawContours(mask, contours, -1, color=255, thickness=-1)
-
-			## Save mask
-			cv2.imwrite(os.path.join(args.path, maskname + args.ext), mask)
-
-		## Subimage locations
-		boxes = []
-
-		for x in range(0, mask.shape[0] - args.size, args.size // 2):
-			for y in range(0, mask.shape[1] - args.size, args.size // 2):
-				if np.any(mask[x:x+args.size, y:y+args.size]):
-					boxes.append((y, x, y+args.size, x+args.size))
-
-		data.append((
-			imagename + args.ext,
-			maskname + args.ext,
-			boxes
-		))
-
-		print('Found {} boxes'.format(len(boxes)))
-
-	# mkdir -p destination
-	os.makedirs(args.destination, exist_ok=True)
-
-	with open(os.path.join(args.destination, args.name), 'w') as f:
-		json.dump(data, f)
+	# Save
+	VIA.dump(VIA.format(via, path=args.path), args.output)
