@@ -242,4 +242,4 @@ if __name__ == '__main__':
 		via[filename].append(polygon)
 
 	# Save
-	VIA.dump(VIA.format(via, path=args.path), args.output)
+	VIA.dump(via, args.output, path=args.path)

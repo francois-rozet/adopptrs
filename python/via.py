@@ -20,13 +20,13 @@ import os
 
 def load(filename):
 	with open(filename, 'r') as f:
-		return json.load(f)
+		return deformat(json.load(f))
 
 
-def dump(via, filename):
+def dump(via, filename, path='./'):
 	os.makedirs(os.path.dirname(filename), exist_ok=True)
 	with open(filename, 'w') as f:
-		json.dump(via, f, indent='\t')
+		json.dump(format(via, path), f, indent='\t')
 
 
 def deformat(via):

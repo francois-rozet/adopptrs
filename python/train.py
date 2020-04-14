@@ -91,8 +91,7 @@ if __name__ == '__main__':
 	print('-' * 10)
 
 	# Datasets
-	with open('../products/json/california.json', 'r') as f:
-		via = VIA.deformat(json.load(f))
+	via = VIA.load(args.input)
 
 	keys = sorted(list(via.keys()))
 
