@@ -23,10 +23,10 @@ def load(filename):
 		return deformat(json.load(f))
 
 
-def dump(via, filename, path='./'):
+def dump(via, filename, path='./', indent=None):
 	os.makedirs(os.path.dirname(filename), exist_ok=True)
 	with open(filename, 'w') as f:
-		json.dump(format(via, path), f, indent='\t')
+		json.dump(format(via, path), f, indent=indent)
 
 
 def deformat(via):
