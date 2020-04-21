@@ -18,10 +18,10 @@ def flatten(array, n=1):
 	if n == 0:
 		return array
 	else:
-		l = list()
+		l = []
 
-		for i in array:
-			l.extend(flatten(i, n - 1))
+		for sub in array:
+			l.extend(flatten(sub, n - 1))
 
 		return l
 
@@ -45,7 +45,7 @@ def plot_images(images, ncols=2, zoom=4):
 def plot_alongside(*argv, zoom=4):
 	'''Plots image lists alongside.'''
 	plot_images(
-		flatten(map(lambda x: list(x), zip(*argv))),
+		flatten(map(list, zip(*argv))),
 		len(argv),
 		zoom
 	)
