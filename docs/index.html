@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+	<!-- Title -->
+	<title>ADOPPTRS</title>
+	<!-- Meta -->
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="author" content="François Rozet">
+	<!-- Stylesheets -->
+	<link href="https://api.mapbox.com/mapbox-gl-js/v1.9.1/mapbox-gl.css" rel="stylesheet" />
+	<style type="text/css"> /* Default */
+		body {
+			margin: 0;
+			padding: 0;
+		}
+		#map {
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			width: 100%;
+		}
+	</style>
+	<!-- Scripts -->
+	<script src="https://api.mapbox.com/mapbox-gl-js/v1.9.1/mapbox-gl.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.1.0/papaparse.min.js"></script>
+	<script src="resources/js/colors.js"></script>
+</head>
+
+<body>
+	<div id="map"></div>
+
+	<script type="text/javascript">
+		// Parse CSV collection
+		var collection = {
+			type: 'FeatureCollection',
+			features: []
+		}
+
+		Papa.parse('resources/csv/liege_province.csv', {
+			download: true,
+			complete: function(results) {
+				csv = results.data.slice(1);
+
+				while (csv[csv.length - 1].length == 1) {
+					csv.pop();
+				}
+
+				csv.forEach(function (value) {
+					collection.features.push({
+						type: 'Feature',
+						geometry: {
+							type: 'Point',
+							coordinates: [
+								value[1],
+								value[0]
+							]
+						},
+						properties: {
+							area: value[2]
+						}
+					});
+				});
+
+				delete csv;
+			},
+			config: {
+				skipEmptyLines: true
+			}
+		});
+
+		// Map
+		mapboxgl.accessToken = 'pk.eyJ1IjoiZG9uc2hlbCIsImEiOiJjazk4bm5meTQwN3VkM2hrNHRtYzlzcHJ4In0.8Bf6BUIcoyNNJD6uURY_lw';
+		var map = new mapboxgl.Map({
+			container: 'map', // container id
+			style: 'mapbox://styles/mapbox/light-v10', // map stylesheet
+			center: [5.59508, 50.55206], // start position at Liège
+			zoom: 8
+		});
+
+		// Zoom and rotation controls
+		map.addControl(new mapboxgl.NavigationControl());
+
+		map.on('load', function() {
+			// Adding source
+			map.addSource('panels', {
+				type: 'geojson',
+				data: collection,
+				cluster: true,
+				clusterMaxZoom: 14, // max zoom to cluster points on
+				clusterRadius: 80 // radius of each cluster
+			});
+
+			map.addLayer({
+				id: 'clusters',
+				type: 'circle',
+				source: 'panels',
+				filter: ['has', 'point_count'],
+				paint: {
+					'circle-color': [
+						'step',
+						['get', 'point_count'],
+						colors.blue, 100,
+						colors.teal, 200,
+						colors.green, 400,
+						colors.lime, 800,
+						colors.yellow, 1600,
+						colors.amber, 3200,
+						colors.orange, 6400,
+						colors.red, 12800,
+						colors.pink, 25600,
+						colors.purple
+					],
+					'circle-radius': [
+						'step',
+						['get', 'point_count'],
+						20, 100,
+						22, 200,
+						24, 400,
+						26, 800,
+						28, 1600,
+						30, 3200,
+						32, 6400,
+						34, 12800,
+						36, 25600,
+						38
+					]
+				}
+			});
+
+			map.addLayer({
+				id: 'cluster-count',
+				type: 'symbol',
+				source: 'panels',
+				filter: ['has', 'point_count'],
+				layout: {
+					'text-field': '{point_count_abbreviated}',
+					'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+					'text-size': 12
+				}
+			});
+
+			map.addLayer({
+				id: 'unclustered-point',
+				type: 'circle',
+				source: 'panels',
+				filter: ['!', ['has', 'point_count']],
+				paint: {
+					'circle-color': '#11b4da',
+					'circle-radius': 5,
+					'circle-stroke-width': 1,
+					'circle-stroke-color': '#fff'
+				}
+			});
+
+			// Zoom on the cluster
+			map.on('click', 'clusters', function(e) {
+				var features = map.queryRenderedFeatures(e.point, {
+					layers: ['clusters']
+				});
+				var clusterId = features[0].properties.cluster_id;
+				map.getSource('panels').getClusterExpansionZoom(
+					clusterId,
+					function(err, zoom) {
+						if (err) return;
+
+						map.easeTo({
+							center: features[0].geometry.coordinates,
+							zoom: zoom
+						});
+					}
+				);
+			});
+
+			// Open popup at the location of the unclusteded-point
+			map.on('click', 'unclustered-point', function(e) {
+
+				var coordinates = e.features[0].geometry.coordinates.slice();
+				var area = e.features[0].properties.area;
+
+				// Ensure popup appears over the point being pointed
+				while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+					coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+				}
+
+				new mapboxgl.Popup()
+					.setLngLat(coordinates)
+					.setHTML('Area : ' + area + ' m<sup>2</sup>')
+					.addTo(map);
+			});
+
+			map.on('mouseenter', 'clusters', function() {
+				map.getCanvas().style.cursor = 'pointer';
+			});
+			map.on('mouseleave', 'clusters', function() {
+				map.getCanvas().style.cursor = '';
+			});
+		});
+	</script>
+</body>
+
+</html>
