@@ -67,21 +67,27 @@ if __name__ == '__main__':
 	import via as VIA
 
 	from torch.utils.data import DataLoader
-	from torch.optim import Adam
+	from torch.optim import Adam, SGD
 
 	from dataset import VIADataset, ColorJitter, RandomFilter, RandomTranspose, Scale, ToTensor
-	from models import UNet
+	from models import UNet, SegNet
 	from criterions import DiceLoss
 
 	# Arguments
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-d', '--destination', default='../products/models/', help='destination of the model(s)')
+	parser.add_argument('-e', '--epochs', type=int, default=100, help='number of epochs')
 	parser.add_argument('-i', '--input', default='../products/json/california.json', help='input VIA file')
-	parser.add_argument('-n', '--name', default='unet', help='name of the model')
+	parser.add_argument('-m', '--model', default='unet', help='model')
+	parser.add_argument('-n', '--name', default=None, help='name of the model')
 	parser.add_argument('-o', '--output', default=None, help='standard output file')
 	parser.add_argument('-p', '--path', default='../resources/california/', help='path to resources')
 	parser.add_argument('-r', '--resume', type=int, default=1, help='epoch at which to resume')
 	parser.add_argument('-s', '--stat', default='../products/csv/statistics.csv', help='statistics file')
+	parser.add_argument('-optim', default='adam', help='optimizer')
+	parser.add_argument('-lrate', type=float, default=1e-3, help='learning rate')
+	parser.add_argument('-wdecay', type=float, default=1e-4, help='weight decay')
+	parser.add_argument('-momentum', type=float, default=0.9, help='momentum')
 	args = parser.parse_args()
 
 	# Output file
@@ -117,7 +123,12 @@ if __name__ == '__main__':
 	validloader = DataLoader(validset, batch_size=5, pin_memory=True)
 
 	# Model
-	model = UNet(3, 1)
+	if args.model == 'unet':
+		model = UNet(3, 1)
+	elif args.mode == 'segnet':
+		model = SegNet(3, 1)
+	else:
+		raise ValueError('unknown model {}'.format(args.model))
 
 	if torch.cuda.is_available():
 		print('CUDA available -> Transfering to CUDA')
@@ -129,7 +140,10 @@ if __name__ == '__main__':
 	model = model.to(device)
 
 	os.makedirs(args.destination, exist_ok=True)
-	basename = os.path.join(args.destination, args.name)
+	basename = os.path.join(
+		args.destination,
+		args.model if args.name is None else args.name
+	)
 
 	if args.resume > 1:
 		modelname = '{}_{:03d}.pth'.format(basename, args.resume - 1)
@@ -158,17 +172,27 @@ if __name__ == '__main__':
 				'valid_loss_third'
 			])
 
-	# Parameters
-	epochs = 100
-	lr, wd = 1e-3, 1e-4
-
-	# Criterion and optimizer
+	# Criterion
 	criterion = DiceLoss(smooth=1.)
-	optimizer = Adam(model.parameters(), lr=lr, weight_decay=wd)
+
+	# Optimizer
+	if args.optim == 'adam':
+		optimizer = Adam(
+			model.parameters(),
+			lr=args.lrate,
+			weight_decay=args.wdecay
+		)
+	elif args.optim == 'sgd':
+		optimizer = SGD(
+			model.parameters(),
+			lr=args.lrate,
+			weight_decay=args.wdecay,
+			momentum=args.momentum
+		)
 
 	# Training
 	best_loss = 1.
-	epochs = range(args.resume, args.resume + epochs)
+	epochs = range(args.resume, args.resume + args.epochs)
 
 	for epoch in epochs:
 		if args.output is not None:
@@ -197,8 +221,8 @@ if __name__ == '__main__':
 		train_mean = train_losses.mean()
 		valid_mean = valid_losses.mean()
 
-		print('Training loss = {}'.format(train_losses.mean()))
-		print('Validation loss = {}'.format(valid_losses.mean()))
+		print('Training loss = {}'.format(train_mean))
+		print('Validation loss = {}'.format(valid_mean))
 
 		with open(args.stat, 'a', newline='') as f:
 			csv.writer(f).writerow([
