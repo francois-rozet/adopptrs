@@ -34,7 +34,7 @@ def double_conv(in_channels, out_channels, kernel_size=3):
 
 class SegNet(nn.Module):
 	"""
-	PyTorch implementation of SegNet
+	Implementation of SegNet
 
 	References
 	----------
@@ -62,6 +62,9 @@ class SegNet(nn.Module):
 			nn.Sigmoid()
 		)
 
+	def head(self, x):
+		return self.last(x)
+
 	def forward(self, x):
 		# Downhill
 		x = self.first(x)
@@ -82,12 +85,43 @@ class SegNet(nn.Module):
 
 		x = self.upsample(x, idx_1)
 
-		return self.last(x)
+		return self.head(x)
+
+
+class MultiTaskSegNet(SegNet):
+	"""
+	Implementation of a multi-task SegNet
+
+	References
+	----------
+	Multi-Task Learning for Segmentation of Building Footprints with Deep Neural Networks
+	(Bischke et al., 2019)
+	https://arxiv.org/pdf/1709.05932.pdf
+	"""
+
+	def __init__(self, in_channels, out_channels, R):
+		super().__init__(in_channels, out_channels)
+
+		self.dist = nn.Conv2d(64, R * 2 + 1, 1)
+		self.relu = nn.ReLU(inplace=True)
+
+		self.last = nn.Sequential(
+			nn.Conv2d(64 + self.dist.out_channels, out_channels, 1),
+			nn.Sigmoid()
+		)
+
+	def head(self, x):
+		dist = self.dist(x)
+
+		x = torch.cat([x, self.relu(dist)], dim=1)
+		x = self.last(x)
+
+		return (x, dist) if self.training else x
 
 
 class UNet(nn.Module):
 	"""
-	PyTorch implementation of U-Net
+	Implementation of U-Net
 
 	References
 	----------
@@ -118,6 +152,9 @@ class UNet(nn.Module):
 			nn.Conv2d(64, out_channels, 1),
 			nn.Sigmoid()
 		)
+
+	def head(self, x):
+		return self.last(x)
 
 	def forward(self, x):
 		# Downhill
@@ -152,4 +189,29 @@ class UNet(nn.Module):
 		x = torch.cat([x, d1], dim=1)
 		x = self.up1(x)
 
-		return self.last(x)
+		return self.head(x)
+
+
+class MultiTaskUNet(UNet):
+	"""
+	Implementation of a multi-task UNet
+	"""
+
+	def __init__(self, in_channels, out_channels, R):
+		super().__init__(in_channels, out_channels)
+
+		self.dist = nn.Conv2d(64, R * 2 + 1, 1)
+		self.relu = nn.ReLU(inplace=True)
+
+		self.last = nn.Sequential(
+			nn.Conv2d(64 + self.dist.out_channels, out_channels, 1),
+			nn.Sigmoid()
+		)
+
+	def head(self, x):
+		dist = self.dist(x)
+
+		x = torch.cat([x, self.relu(dist)], dim=1)
+		x = self.last(x)
+
+		return (x, dist) if self.training else x

@@ -75,25 +75,27 @@ if __name__ == '__main__':
 	from torch.optim import Adam, SGD
 
 	from dataset import VIADataset, ColorJitter, RandomFilter, RandomTranspose, Scale, ToTensor
-	from models import UNet, SegNet
-	from criterions import DiceLoss
+	from models import UNet, SegNet, MultiTaskUNet, MultiTaskSegNet
+	from criterions import DiceLoss, MultiTaskLoss
 
 	# Arguments
 	parser = argparse.ArgumentParser(description='Train and validate a model')
 	parser.add_argument('-d', '--destination', default='../products/models/', help='destination of the model(s)')
 	parser.add_argument('-e', '--epochs', type=int, default=100, help='number of epochs')
 	parser.add_argument('-i', '--input', default='../products/json/california.json', help='input VIA file')
-	parser.add_argument('-m', '--model', default='unet', help='model')
+	parser.add_argument('-m', '--model', default='unet', choices=['unet', 'segnet'], help='model')
 	parser.add_argument('-n', '--name', default=None, help='name of the model')
 	parser.add_argument('-o', '--output', default=None, help='standard output file')
 	parser.add_argument('-p', '--path', default='../resources/california/', help='path to resources')
 	parser.add_argument('-r', '--resume', type=int, default=1, help='epoch at which to resume')
 	parser.add_argument('-s', '--split', type=int, nargs=2, default=(350, 400), help='train-valid-test splitting indexes')
+	parser.add_argument('-scale', type=int, default=1, help='scale of the images')
 	parser.add_argument('-stat', default='../products/csv/statistics.csv', help='statistics file')
-	parser.add_argument('-optim', default='adam', help='optimizer')
+	parser.add_argument('-optim', default='adam', choices=['adam', 'sgd'], help='optimizer')
 	parser.add_argument('-lrate', type=float, default=1e-3, help='learning rate')
 	parser.add_argument('-wdecay', type=float, default=1e-4, help='weight decay')
 	parser.add_argument('-momentum', type=float, default=0.9, help='momentum')
+	parser.add_argument('-multitask', default=False, action='store_true', help='multi-task network')
 	args = parser.parse_args()
 
 	# Output file
@@ -113,13 +115,19 @@ if __name__ == '__main__':
 	train_via = {key: via[key] for key in keys[:args.split[0]]}
 	valid_via = {key: via[key] for key in keys[args.split[0]:args.split[1]]}
 
-	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(VIADataset(train_via, args.path, shuffle=True)))))
-	validset = ToTensor(VIADataset(valid_via, args.path))
+	trainset = ToTensor(
+		RandomTranspose(RandomFilter(ColorJitter(
+			Scale(VIADataset(train_via, args.path, shuffle=True), args.scale)
+			if args.scale > 1 else
+			VIADataset(train_via, args.path, shuffle=True)
+		)))
+	)
 
-	"""Scaling the images for WalOnMap
-	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(Scale(VIADataset(train_via, args.path, size=128, shuffle=True), 2)))))
-	validset = ToTensor(Scale(VIADataset(valid_via, size=128, args.path), 2))
-	"""
+	validset = ToTensor(
+		Scale(VIADataset(valid_via, args.path), args.scale)
+		if args.scale > 1 else
+		VIADataset(valid_via, args.path)
+	)
 
 	print('Training size = {}'.format(len(trainset)))
 	print('Validation size = {}'.format(len(validset)))
@@ -130,9 +138,15 @@ if __name__ == '__main__':
 
 	# Model
 	if args.model == 'unet':
-		model = UNet(3, 1)
+		if args.multitask:
+			model = MultiTaskUNet(3, 1, R=5)
+		else:
+			model = UNet(3, 1)
 	elif args.model == 'segnet':
-		model = SegNet(3, 1)
+		if args.multitask:
+			model = MultiTaskSegNet(3, 1, R=5)
+		else:
+			model = SegNet(3, 1)
 	else:
 		raise ValueError('unknown model {}'.format(args.model))
 
@@ -179,7 +193,12 @@ if __name__ == '__main__':
 			])
 
 	# Criterion
-	criterion = DiceLoss(smooth=1.)
+	if args.multitask:
+		train_criterion = MultiTaskLoss(smooth=1., R=5)
+	else:
+		train_criterion = DiceLoss(smooth=1.)
+
+	valid_criterion = DiceLoss(smooth=1.)
 
 	# Optimizer
 	if args.optim == 'adam':
@@ -213,10 +232,10 @@ if __name__ == '__main__':
 		start = time.time()
 
 		## Training set
-		train_losses = train_epoch(model, trainloader, criterion, optimizer)
+		train_losses = train_epoch(model, trainloader, train_criterion, optimizer)
 
 		## Validation set
-		valid_losses = eval(model, validloader, [criterion])
+		valid_losses = eval(model, validloader, [valid_criterion])
 
 		elapsed = time.time() - start
 

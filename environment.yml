@@ -50,7 +50,7 @@ dependencies:
   - notebook=6.0.3=py38_0
   - numpy=1.18.1=py38h93ca92e_0
   - numpy-base=1.18.1=py38hc3f5095_1
-  - openssl=1.1.1f=he774522_0
+  - openssl=1.1.1g=he774522_0
   - pandoc=2.2.3.2=0
   - pandocfilters=1.4.2=py38_1
   - parso=0.6.2=py_0
@@ -71,6 +71,7 @@ dependencies:
   - qt=5.9.7=vc14h73c81de_0
   - qtconsole=4.7.2=py_0
   - qtpy=1.9.0=py_0
+  - scipy=1.4.1=py38h9439919_0
   - send2trash=1.5.0=py38_0
   - setuptools=46.1.3=py38_0
   - sip=4.19.13=py38ha925a31_0
