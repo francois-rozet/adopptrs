@@ -69,7 +69,7 @@ if __name__ == '__main__':
 	from torch.utils.data import DataLoader
 	from torch.optim import Adam
 
-	from dataset import VIADataset, ColorJitter, RandomFilter, RandomTranspose, ToTensor
+	from dataset import VIADataset, ColorJitter, RandomFilter, RandomTranspose, Scale, ToTensor
 	from models import UNet
 	from criterions import DiceLoss
 
@@ -103,6 +103,11 @@ if __name__ == '__main__':
 
 	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(VIADataset(train_via, args.path, shuffle=True)))))
 	validset = ToTensor(VIADataset(valid_via, args.path))
+
+	"""Scaling the images for WalOnMap
+	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(Scale(VIADataset(train_via, args.path, size=128, shuffle=True), 2)))))
+	validset = ToTensor(Scale(VIADataset(valid_via, size=128, args.path), 2))
+	"""
 
 	print('Training size = {}'.format(len(trainset)))
 	print('Validation size = {}'.format(len(validset)))
