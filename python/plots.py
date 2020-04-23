@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 """
+Image plotting helpers
 """
 
 ###########

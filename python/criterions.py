@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 """
+PyTorch loss functions and metrics
 """
 
 ###########
@@ -13,7 +16,7 @@ import torch.nn as nn
 ###########
 
 class DiceLoss(nn.Module):
-	'''Dice Loss (IoU, F-score, ...).'''
+	'''Dice Loss (F-score, ...).'''
 
 	def __init__(self, smooth=1.):
 		super().__init__()

@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 """
+Training and validation of models
 """
 
 ###########
@@ -14,6 +17,7 @@ import torch
 #############
 
 def train_epoch(model, loader, criterion, optimizer):
+	'''Trains a model for one epoch.'''
 	model.train()
 	device = next(model.parameters()).device
 	losses = []
@@ -34,6 +38,7 @@ def train_epoch(model, loader, criterion, optimizer):
 
 
 def eval(model, loader, metrics):
+	'''Evaluates metrics on a model.'''
 	model.eval()
 	device = next(model.parameters()).device
 	values = []
@@ -74,7 +79,7 @@ if __name__ == '__main__':
 	from criterions import DiceLoss
 
 	# Arguments
-	parser = argparse.ArgumentParser()
+	parser = argparse.ArgumentParser(description='Train and validate a model')
 	parser.add_argument('-d', '--destination', default='../products/models/', help='destination of the model(s)')
 	parser.add_argument('-e', '--epochs', type=int, default=100, help='number of epochs')
 	parser.add_argument('-i', '--input', default='../products/json/california.json', help='input VIA file')
@@ -83,7 +88,8 @@ if __name__ == '__main__':
 	parser.add_argument('-o', '--output', default=None, help='standard output file')
 	parser.add_argument('-p', '--path', default='../resources/california/', help='path to resources')
 	parser.add_argument('-r', '--resume', type=int, default=1, help='epoch at which to resume')
-	parser.add_argument('-s', '--stat', default='../products/csv/statistics.csv', help='statistics file')
+	parser.add_argument('-s', '--split', type=int, nargs=2, default=(350, 400), help='train-valid-test splitting indexes')
+	parser.add_argument('-stat', default='../products/csv/statistics.csv', help='statistics file')
 	parser.add_argument('-optim', default='adam', help='optimizer')
 	parser.add_argument('-lrate', type=float, default=1e-3, help='learning rate')
 	parser.add_argument('-wdecay', type=float, default=1e-4, help='weight decay')
@@ -104,8 +110,8 @@ if __name__ == '__main__':
 	random.seed(0)
 	random.shuffle(keys)
 
-	train_via = {key: via[key] for key in keys[:350]}
-	valid_via = {key: via[key] for key in keys[350:400]}
+	train_via = {key: via[key] for key in keys[:args.split[0]]}
+	valid_via = {key: via[key] for key in keys[args.split[0]:args.split[1]]}
 
 	trainset = ToTensor(RandomTranspose(RandomFilter(ColorJitter(VIADataset(train_via, args.path, shuffle=True)))))
 	validset = ToTensor(VIADataset(valid_via, args.path))
@@ -125,7 +131,7 @@ if __name__ == '__main__':
 	# Model
 	if args.model == 'unet':
 		model = UNet(3, 1)
-	elif args.mode == 'segnet':
+	elif args.model == 'segnet':
 		model = SegNet(3, 1)
 	else:
 		raise ValueError('unknown model {}'.format(args.model))
@@ -189,6 +195,8 @@ if __name__ == '__main__':
 			weight_decay=args.wdecay,
 			momentum=args.momentum
 		)
+	else:
+		raise ValueError('unknown optimizer {}'.format(args.optim))
 
 	# Training
 	best_loss = 1.

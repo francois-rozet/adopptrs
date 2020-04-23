@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 """
+Summarizing WalOnMap VIA files
 """
 
 #############
@@ -37,7 +40,7 @@ if __name__ == '__main__':
 	from walonmap import _WALONMAP as wm
 
 	# Arguments
-	parser = argparse.ArgumentParser()
+	parser = argparse.ArgumentParser(description='Summarize a WalOnMap VIA file')
 	parser.add_argument('-i', '--input', default='../products/json/walonmap.json', help='input VIA file')
 	parser.add_argument('-o', '--output', default='../products/csv/summary.csv', help='output csv file')
 	parser.add_argument('-t', '--threshold', default=10., type=float, help='area threshold')

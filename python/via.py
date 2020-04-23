@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+
 """
 VGG Image Annotator package
+
+References
 ----------
 The VIA annotation software for images, audio and video
 (Dutta et al., 2019)

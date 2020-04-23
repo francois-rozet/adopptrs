@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+
 """
 Web Map Tile Service package
+
+References
 ----------
 OpenGIS Web Map Tile Service Implementation Standard
 (Maso, Pomakis and Julia, 2010)

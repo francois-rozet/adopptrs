@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 """
+PyTorch Models
 """
 
 ###########
@@ -14,6 +17,7 @@ import torch.nn as nn
 #############
 
 def double_conv(in_channels, out_channels, kernel_size=3):
+	'''Generic double convolution layer'''
 	return nn.Sequential(
 		nn.Conv2d(in_channels, out_channels, kernel_size, padding=1),
 		nn.BatchNorm2d(out_channels),
@@ -30,11 +34,15 @@ def double_conv(in_channels, out_channels, kernel_size=3):
 
 class SegNet(nn.Module):
 	"""
-	PyTorch implementation of
+	PyTorch implementation of SegNet
+
+	References
+	----------
 	SegNet: A Deep Convolutional Encoder-Decoder Architecture for Image Segmentation
 	(Badrinarayanan et al., 2016)
 	https://arxiv.org/pdf/1511.00561.pdf
 	"""
+
 	def __init__(self, in_channels, out_channels):
 		super().__init__()
 
@@ -79,11 +87,15 @@ class SegNet(nn.Module):
 
 class UNet(nn.Module):
 	"""
-	PyTorch implementation of
+	PyTorch implementation of U-Net
+
+	References
+	----------
 	U-Net: Convolutional Networks for Biomedical Image Segmentation
 	(Ronneberger et al., 2015)
 	https://arxiv.org/abs/1505.04597
 	"""
+
 	def __init__(self, in_channels, out_channels):
 		super().__init__()
 

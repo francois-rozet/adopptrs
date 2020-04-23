@@ -1,4 +1,12 @@
+#!/usr/bin/env python
+
 """
+Processing WalOnMap tiles
+
+References
+----------
+WalOnMap - Orthorectified aerial images of Wallonia
+https://geoportail.wallonie.be/walonmap
 """
 
 #############
@@ -16,8 +24,8 @@ from wmts import WMTS
 #############
 
 _WALONMAP = WMTS(
-	wmts='https://geoservices.wallonie.be/arcgis/rest/services/IMAGERIE/ORTHO_LAST/MapServer/WMTS',
-	layer='IMAGERIE_ORTHO_LAST',
+	wmts='https://geoservices.wallonie.be/arcgis/rest/services/IMAGERIE/ORTHO_2018/MapServer/WMTS',
+	layer='IMAGERIE_ORTHO_2018',
 	tms='default028mm',
 	tm='15'
 )
@@ -74,7 +82,7 @@ if __name__ == '__main__':
 	from dataset import to_pil, to_tensor, to_polygons
 
 	# Arguments
-	parser = argparse.ArgumentParser()
+	parser = argparse.ArgumentParser(description='Process WalOnMap tiles')
 	parser.add_argument('-d', '--destination', default=None, help='destination of the tiles')
 	parser.add_argument('-l', '--limit', default=-1, type=int, help='number of tiles to process')
 	parser.add_argument('-m', '--model', default='../products/models/unet.pth', help='model')

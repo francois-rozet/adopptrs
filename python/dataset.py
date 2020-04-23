@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 """
+PyTorch datasets and data augmenters
 """
 
 ###########
@@ -31,6 +34,7 @@ def to_tensor(pic):
 
 
 def to_mask(shape, polygons):
+	'''Builds a mask based on polygon annotations.'''
 	contours = [np.array(p, dtype=int) for p in polygons]
 
 	mask = np.zeros(shape, dtype=np.uint8)
@@ -40,6 +44,7 @@ def to_mask(shape, polygons):
 
 
 def to_polygons(mask):
+	'''Converts a mask into polygon annotations.'''
 	mask = np.array(mask)
 
 	_, mask = cv2.threshold(mask, 128, 255, cv2.THRESH_BINARY)
@@ -214,10 +219,10 @@ if __name__ == '__main__':
 	import via as VIA
 
 	# Arguments
-	parser = argparse.ArgumentParser()
+	parser = argparse.ArgumentParser(description='Format California annotations to the VIA format')
 	parser.add_argument('-e', '--ext', default='.tif', help='extension of the images')
 	parser.add_argument('-o', '--output', default='../products/json/california.json', help='output VIA file')
-	parser.add_argument('-p', '--path', default='../resources/california/', help='path to california resources')
+	parser.add_argument('-p', '--path', default='../resources/california/', help='path to California resources')
 	args = parser.parse_args()
 
 	# Polygons
