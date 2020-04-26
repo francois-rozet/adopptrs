@@ -89,7 +89,7 @@ class VIADataset(data.IterableDataset):
 			image = Image.open(imagename).convert('RGB')
 
 			if imagename not in self.masks:
-				self.masks[imagename] = to_mask((image.width, image.height), self.via[imagename])
+				self.masks[imagename] = to_mask((image.height, image.width), self.via[imagename])
 
 			mask = self.masks[imagename]
 
