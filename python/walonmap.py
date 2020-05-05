@@ -78,7 +78,7 @@ if __name__ == '__main__':
 
 	from PIL import Image
 
-	from models import UNet
+	from models import MultiTaskUNet
 	from dataset import to_pil, to_tensor, to_polygons
 
 	# Arguments
@@ -105,7 +105,7 @@ if __name__ == '__main__':
 	print('{} tiles in region'.format(len(contour)))
 
 	# Model
-	model = UNet(3, 1)
+	model = MultiTaskUNet(3, 1, R=5)
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 	model = model.to(device)
 
