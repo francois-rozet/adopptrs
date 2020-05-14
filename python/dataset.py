@@ -55,6 +55,30 @@ def to_polygons(mask):
 	return polygons
 
 
+def clusterize(polygons, size):
+	'''Clusterize polygons.'''
+	clusters = {}
+
+	for polygon in polygons:
+		temp = np.array(polygon).astype(int)
+
+		xmin = np.amin(temp[:, 0]) // size
+		xmax = np.amax(temp[:, 0]) // size
+		ymin = np.amin(temp[:, 1]) // size
+		ymax = np.amax(temp[:, 1]) // size
+
+		for x in range(xmin, xmax + 1):
+			for y in range(ymin, ymax + 1):
+				key = x * size, y * size
+
+				if not key in clusters:
+					clusters[key] = []
+
+				clusters[key].append(polygon)
+
+	return clusters
+
+
 ###########
 # Classes #
 ###########
@@ -62,60 +86,87 @@ def to_polygons(mask):
 class VIADataset(data.IterableDataset):
 	'''Iterable VIA dataset.'''
 
-	def __init__(self, via, path='./', size=256, shuffle=False):
-		self.via = {
-			os.path.join(path, key): value for key, value in via.items()
-			if os.path.exists(os.path.join(path, key))
-		}
-
-		self.images = list(self.via.keys())
+	def __init__(self, via, path='./', size=256, shuffle=False, shift=0, full=False, alt=0):
+		self.via = {}
 		self.masks = {}
+		self.clusters = {}
 
 		self.size = size
 
-		self.shuffle = shuffle
+		for key, polygons in via.items():
+			imagename = os.path.join(path, key)
+
+			if os.path.exists(imagename):
+				image = Image.open(imagename)
+
+				self.via[imagename] = polygons
+				self.masks[imagename] = to_mask((image.height, image.width), polygons)
+
+				if self.size is not None:
+					self.clusters[imagename] = clusterize(polygons, self.size)
+
+		self.shuffle = shuffle # random order
+		self.shift = shift # random shift
+		self.full = full # all sub-images
+		self.alt = alt # alternate
 
 	def __len__(self):
 		if self.size is None:
 			return len(self.via)
+		elif self.full:
+			s = 0
+			for imagename in self.via:
+				image = Image.open(imagename)
+				s += (image.width // self.size) * (image.height // self.size)
+			return s
 		else:
-			return sum(map(len, self.via.values()))
+			return sum(map(len, self.clusters.values())) * (1 + self.alt)
 
 	def __iter__(self):
-		if self.shuffle:
-			random.shuffle(self.images)
+		images = random.sample(
+			self.via.keys(),
+			len(self.via)
+		) if self.shuffle else self.via.keys()
 
-		for imagename in self.images:
+		for imagename in images:
 			image = Image.open(imagename).convert('RGB')
-
-			if imagename not in self.masks:
-				self.masks[imagename] = to_mask((image.height, image.width), self.via[imagename])
-
 			mask = self.masks[imagename]
 
 			if self.size is None:
 				yield image, mask
+			elif self.full:
+				for left in np.arange(0, image.width, self.size):
+					for upper in np.arange(0, image.height, self.size):
+						box = (left, upper, left + self.size, upper + self.size)
+						yield image.crop(box), mask.crop(box)
 			else:
+				clusters = list(self.clusters[imagename].keys())
+
 				if self.shuffle:
-					random.shuffle(self.via[imagename])
+					random.shuffle(clusters)
 
-				for polygon in self.via[imagename]:
-					left, upper = random.choice(polygon)
+				for left, upper in clusters:
+					# Shift
+					if self.shift > 0:
+						left += random.randint(-self.shift, self.shift)
+						upper += random.randint(-self.shift, self.shift)
 
-					# Transpose
-					left -= random.randrange(self.size)
-					upper -= random.randrange(self.size)
-
-					# Box
-					left = max(left, 0)
+					# Out of bounds
 					left = min(left, image.width - self.size)
-
-					upper = max(upper, 0)
 					upper = min(upper, image.height - self.size)
 
 					box = (left, upper, left + self.size, upper + self.size)
 
 					yield image.crop(box), mask.crop(box)
+
+					# Alternate with random images
+					for _ in range(self.alt):
+						left = random.randrange(image.width - self.size)
+						upper = random.randrange(image.height - self.size)
+
+						box = (left, upper, left + self.size, upper + self.size)
+
+						yield image.crop(box), mask.crop(box)
 
 
 class RandomChoice(data.IterableDataset):

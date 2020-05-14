@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Training and validation of models
+Training of models
 """
 
 ###########
@@ -37,25 +37,6 @@ def train_epoch(model, loader, criterion, optimizer):
 	return losses
 
 
-def eval(model, loader, metrics):
-	'''Evaluates metrics on a model.'''
-	model.eval()
-	device = next(model.parameters()).device
-	values = []
-
-	with torch.no_grad():
-		for inputs, targets in loader:
-			inputs = inputs.to(device)
-			targets = targets.to(device)
-			outputs = model(inputs)
-
-			values.append(
-				[metric(outputs, targets).item() for metric in metrics]
-			)
-
-	return values
-
-
 ########
 # Main #
 ########
@@ -64,7 +45,6 @@ if __name__ == '__main__':
 	# Imports
 	import argparse
 	import csv
-	import json
 	import numpy as np
 	import os
 	import random
@@ -76,30 +56,32 @@ if __name__ == '__main__':
 
 	from dataset import VIADataset, ColorJitter, RandomFilter, RandomTranspose, Scale, ToTensor
 	from models import UNet, SegNet, MultiTaskUNet, MultiTaskSegNet
-	from criterions import DiceLoss, MultiTaskLoss
+	from criterions import DiceLoss, MultiTaskLoss, TP, TN, FP, FN
 
 	# Arguments
-	parser = argparse.ArgumentParser(description='Train and validate a model')
-	parser.add_argument('-d', '--destination', default='../products/models/', help='destination of the model(s)')
+	parser = argparse.ArgumentParser(description='Train a model')
+	parser.add_argument('-d', '--destination', default='../products/models/', help='destination of the network file(s)')
 	parser.add_argument('-e', '--epochs', type=int, default=100, help='number of epochs')
+	parser.add_argument('-f', '--fold', type=int, default=0, help='the fold')
 	parser.add_argument('-i', '--input', default='../products/json/california.json', help='input VIA file')
-	parser.add_argument('-m', '--model', default='unet', choices=['unet', 'segnet'], help='model')
-	parser.add_argument('-n', '--name', default=None, help='name of the model')
+	parser.add_argument('-k', type=int, default=5, help='the number of folds')
+	parser.add_argument('-m', '--model', default='unet', choices=['unet', 'segnet'], help='network schema')
+	parser.add_argument('-multitask', default=False, action='store_true', help='multi-task network')
+	parser.add_argument('-n', '--name', default=None, help='name of the network')
 	parser.add_argument('-o', '--output', default=None, help='standard output file')
 	parser.add_argument('-p', '--path', default='../resources/california/', help='path to resources')
 	parser.add_argument('-r', '--resume', type=int, default=1, help='epoch at which to resume')
-	parser.add_argument('-s', '--split', type=int, nargs=2, default=(350, 400), help='train-valid-test splitting indexes')
+	parser.add_argument('-s', '--stat', default='../products/csv/statistics.csv', help='convergence statistics file')
 	parser.add_argument('-scale', type=int, default=1, help='scale of the images')
-	parser.add_argument('-stat', default='../products/csv/statistics.csv', help='statistics file')
 	parser.add_argument('-optim', default='adam', choices=['adam', 'sgd'], help='optimizer')
 	parser.add_argument('-lrate', type=float, default=1e-3, help='learning rate')
 	parser.add_argument('-wdecay', type=float, default=1e-4, help='weight decay')
-	parser.add_argument('-momentum', type=float, default=0.9, help='momentum')
-	parser.add_argument('-multitask', default=False, action='store_true', help='multi-task network')
+	parser.add_argument('-momentum', type=float, default=0.9, help='momentum of SGD')
 	args = parser.parse_args()
 
 	# Output file
 	if args.output is not None:
+		os.makedirs(os.path.dirname(args.output), exist_ok=True)
 		sys.stdout = open(args.output, 'a')
 
 	print('-' * 10)
@@ -109,32 +91,26 @@ if __name__ == '__main__':
 
 	keys = sorted(list(via.keys()))
 
-	random.seed(0)
+	random.seed(0) # reproductability
 	random.shuffle(keys)
 
-	train_via = {key: via[key] for key in keys[:args.split[0]]}
-	valid_via = {key: via[key] for key in keys[args.split[0]:args.split[1]]}
+	if (args.k > 0):
+		train_via = {key: via[key] for i, key in enumerate(keys) if (i % args.k) != args.fold}
+	else:
+		train_via = via
 
 	trainset = ToTensor(
 		RandomTranspose(RandomFilter(ColorJitter(
-			Scale(VIADataset(train_via, args.path, shuffle=True), args.scale)
+			Scale(VIADataset(train_via, args.path, shuffle=True, alt=1), args.scale)
 			if args.scale > 1 else
-			VIADataset(train_via, args.path, shuffle=True)
+			VIADataset(train_via, args.path, shuffle=True, alt=1)
 		)))
 	)
 
-	validset = ToTensor(
-		Scale(VIADataset(valid_via, args.path), args.scale)
-		if args.scale > 1 else
-		VIADataset(valid_via, args.path)
-	)
-
 	print('Training size = {}'.format(len(trainset)))
-	print('Validation size = {}'.format(len(validset)))
 
 	# Dataloaders
 	trainloader = DataLoader(trainset, batch_size=5, pin_memory=True)
-	validloader = DataLoader(validset, batch_size=5, pin_memory=True)
 
 	# Model
 	if args.model == 'unet':
@@ -171,8 +147,12 @@ if __name__ == '__main__':
 		if os.path.exists(modelname):
 			print('Resuming from {}'.format(modelname))
 			model.load_state_dict(torch.load(modelname, map_location=device))
+		else:
+			args.resume = 1
+	else:
+		args.resume = 1
 
-	# Statistics
+	# Convergence statistics
 	os.makedirs(os.path.dirname(args.stat), exist_ok=True)
 
 	if not os.path.exists(args.stat):
@@ -184,12 +164,7 @@ if __name__ == '__main__':
 				'train_loss_std',
 				'train_loss_first',
 				'train_loss_second',
-				'train_loss_third',
-				'valid_loss_mean',
-				'valid_loss_std',
-				'valid_loss_first',
-				'valid_loss_second',
-				'valid_loss_third'
+				'train_loss_third'
 			])
 
 	# Criterion
@@ -197,8 +172,6 @@ if __name__ == '__main__':
 		train_criterion = MultiTaskLoss(smooth=1., R=5)
 	else:
 		train_criterion = DiceLoss(smooth=1.)
-
-	valid_criterion = DiceLoss(smooth=1.)
 
 	# Optimizer
 	if args.optim == 'adam':
@@ -218,7 +191,6 @@ if __name__ == '__main__':
 		raise ValueError('unknown optimizer {}'.format(args.optim))
 
 	# Training
-	best_loss = 1.
 	epochs = range(args.resume, args.resume + args.epochs)
 
 	for epoch in epochs:
@@ -234,22 +206,16 @@ if __name__ == '__main__':
 		## Training set
 		train_losses = train_epoch(model, trainloader, train_criterion, optimizer)
 
-		## Validation set
-		valid_losses = eval(model, validloader, [valid_criterion])
-
 		elapsed = time.time() - start
 
 		print('{:.0f}m{:.0f}s elapsed'.format(elapsed // 60, elapsed % 60))
 
 		## Statistics
 		train_losses = np.array(train_losses)
-		valid_losses = np.array(valid_losses)
 
 		train_mean = train_losses.mean()
-		valid_mean = valid_losses.mean()
 
 		print('Training loss = {}'.format(train_mean))
-		print('Validation loss = {}'.format(valid_mean))
 
 		with open(args.stat, 'a', newline='') as f:
 			csv.writer(f).writerow([
@@ -259,19 +225,11 @@ if __name__ == '__main__':
 				np.std(train_losses),
 				np.quantile(train_losses, 0.25),
 				np.quantile(train_losses, 0.5),
-				np.quantile(train_losses, 0.75),
-				np.mean(valid_losses),
-				np.std(valid_losses),
-				np.quantile(valid_losses, 0.25),
-				np.quantile(valid_losses, 0.5),
-				np.quantile(valid_losses, 0.75),
+				np.quantile(train_losses, 0.75)
 			])
 
-		if valid_mean < best_loss or epoch == epochs[-1]:
-			best_loss = valid_mean
-
+		## Saving last
+		if epoch == epochs[-1]:
 			modelname = '{}_{:03d}.pth'.format(basename, epoch)
-
 			print('Saving {}'.format(modelname))
-
 			torch.save(model.state_dict(), modelname)
