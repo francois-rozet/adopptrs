@@ -55,7 +55,7 @@ class MultiTaskLoss(nn.Module):
 
 
 class DiceLoss(nn.Module):
-	'''Dice Loss (F-score, ...).'''
+	'''Dice Loss (F-score, ...)'''
 
 	def __init__(self, smooth=1.):
 		super().__init__()
@@ -64,14 +64,29 @@ class DiceLoss(nn.Module):
 
 	def forward(self, outputs, targets):
 		inter = (outputs * targets).sum()
-		union = outputs.sum() + targets.sum()
-		iou = (2. * inter + self.smooth) / (union + self.smooth)
+		dice = (2. * inter + self.smooth) / (outputs.sum() + targets.sum() + self.smooth)
+
+		return 1. - dice
+
+
+class IOULoss(nn.Module):
+	'''Intersection Over Union Loss'''
+
+	def __init__(self, smooth=1.):
+		super().__init__()
+
+		self.smooth = smooth
+
+	def forward(self, outputs, targets):
+		inter = (outputs * targets).sum()
+		union = outputs.sum() + targets.sum() - inter
+		iou = (inter + self.smooth) / (union + self.smooth)
 
 		return 1. - iou
 
 
 class TP(nn.Module):
-	'''True Positive.'''
+	'''True Positive'''
 
 	def __init__(self, threshold=0.5):
 		super().__init__()
@@ -83,7 +98,7 @@ class TP(nn.Module):
 
 
 class TN(nn.Module):
-	'''True Negative.'''
+	'''True Negative'''
 
 	def __init__(self, threshold=0.5):
 		super().__init__()
@@ -95,7 +110,7 @@ class TN(nn.Module):
 
 
 class FP(nn.Module):
-	'''False Positive.'''
+	'''False Positive'''
 
 	def __init__(self, threshold=0.5):
 		super().__init__()
@@ -107,7 +122,7 @@ class FP(nn.Module):
 
 
 class FN(nn.Module):
-	'''False Negative.'''
+	'''False Negative'''
 
 	def __init__(self, threshold=0.5):
 		super().__init__()
