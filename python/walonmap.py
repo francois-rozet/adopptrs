@@ -78,17 +78,19 @@ if __name__ == '__main__':
 
 	from PIL import Image
 
-	from models import MultiTaskUNet
+	from models import UNet, SegNet, MultiTaskUNet, MultiTaskSegNet
 	from dataset import to_pil, to_tensor, to_polygons
 
 	# Arguments
 	parser = argparse.ArgumentParser(description='Process WalOnMap tiles')
 	parser.add_argument('-d', '--destination', default=None, help='destination of the tiles')
 	parser.add_argument('-l', '--limit', default=-1, type=int, help='number of tiles to process')
-	parser.add_argument('-m', '--model', default='../products/models/unet.pth', help='model')
-	parser.add_argument('-n', '--name', default='', help='prefix name of the tiles')
+	parser.add_argument('-m', '--model', default='unet', choices=['unet', 'segnet'], help='network schema')
+	parser.add_argument('-multitask', default=False, action='store_true', help='multi-task network')
+	parser.add_argument('-n', '--network', help='network file')
 	parser.add_argument('-o', '--output', default='../products/json/walonmap.json', help='output VIA file')
 	parser.add_argument('-p', '--polygon', required=True, help='GeoJSON polygon file')
+	parser.add_argument('-t', '--tile', default='', help='tile prefix name')
 	args = parser.parse_args()
 
 	# Contour
@@ -105,11 +107,23 @@ if __name__ == '__main__':
 	print('{} tiles in region'.format(len(contour)))
 
 	# Model
-	model = MultiTaskUNet(3, 1, R=5)
+	if args.model == 'unet':
+		if args.multitask:
+			model = MultiTaskUNet(3, 1, R=5)
+		else:
+			model = UNet(3, 1)
+	elif args.model == 'segnet':
+		if args.multitask:
+			model = MultiTaskSegNet(3, 1, R=5)
+		else:
+			model = SegNet(3, 1)
+	else:
+		raise ValueError('unknown model {}'.format(args.model))
+
 	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 	model = model.to(device)
 
-	model.load_state_dict(torch.load(args.model, map_location=device))
+	model.load_state_dict(torch.load(args.network, map_location=device))
 
 	model.eval()
 
@@ -139,7 +153,7 @@ if __name__ == '__main__':
 			polygons = to_polygons(to_pil(outpt))
 
 			if polygons:
-				basename = args.name + '{}_{}.jpg'.format(row, col)
+				basename = args.tile + '{}_{}.jpg'.format(row, col)
 				via[basename] = polygons
 
 				if args.destination is not None:

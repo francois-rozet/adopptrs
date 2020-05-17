@@ -37,6 +37,7 @@ if __name__ == '__main__':
 	import os
 
 	import via as VIA
+	from evaluate import surface
 	from walonmap import _WALONMAP as wm
 
 	# Arguments
@@ -67,7 +68,7 @@ if __name__ == '__main__':
 				x, y = panel.mean(axis=0)
 				panel = (panel / _TOL).astype(int)
 
-				area = cv2.contourArea(panel) * (_TOL ** 2)
+				area = surface(panel) * (_TOL ** 2)
 				_, _, angle = cv2.minAreaRect(panel)
 
 				## Threshold
