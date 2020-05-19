@@ -43,18 +43,6 @@ def to_mask(shape, polygons):
 	return Image.fromarray(mask)
 
 
-def to_polygons(mask, threshold=128):
-	'''Converts a mask into polygon annotations.'''
-	mask = np.array(mask)
-
-	_, mask = cv2.threshold(mask, threshold, 255, cv2.THRESH_BINARY)
-	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-	polygons = [c[:, 0, :].tolist() for c in contours]
-
-	return polygons
-
-
 def to_contours(mask):
 	'''Converts a mask into OpenCV contours.'''
 	mask = np.array(mask)

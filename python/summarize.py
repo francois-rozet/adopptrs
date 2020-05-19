@@ -44,7 +44,6 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='Summarize a WalOnMap VIA file')
 	parser.add_argument('-i', '--input', default='../products/json/walonmap.json', help='input VIA file')
 	parser.add_argument('-o', '--output', default='../products/csv/summary.csv', help='output csv file')
-	parser.add_argument('-t', '--threshold', default=10., type=float, help='area threshold')
 	args = parser.parse_args()
 
 	# VIA
@@ -71,14 +70,12 @@ if __name__ == '__main__':
 				area = surface(panel) * (_TOL ** 2)
 				_, _, angle = cv2.minAreaRect(panel)
 
-				## Threshold
-				if area > args.threshold:
-					lat, lon = wm.xy_to_wgs(x, y)
-					azimuth = 180 + angle if angle > -45 else 270 + angle
+				lat, lon = wm.xy_to_wgs(x, y)
+				azimuth = 180 + angle if angle > -45 else 270 + angle
 
-					writer.writerow([
-						round(lat, 6),
-						round(lon, 6),
-						round(area, 2),
-						round(azimuth, 2)
-					])
+				writer.writerow([
+					round(lat, 6),
+					round(lon, 6),
+					round(area, 2),
+					round(azimuth, 2)
+				])

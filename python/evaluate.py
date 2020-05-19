@@ -59,7 +59,9 @@ if __name__ == '__main__':
 	import torch
 	import via as VIA
 
-	from dataset import VIADataset, ToTensor, to_pil, to_contours
+	from PIL import Image
+
+	from dataset import VIADataset, ToTensor, to_pil, to_tensor, to_contours
 	from models import UNet, SegNet, MultiTaskUNet, MultiTaskSegNet
 	from criterions import TP, TN, FP, FN
 
@@ -78,7 +80,8 @@ if __name__ == '__main__':
 
 	# Output file
 	if args.output is not None:
-		os.makedirs(os.path.dirname(args.output), exist_ok=True)
+		if os.path.dirname(args.output):
+			os.makedirs(os.path.dirname(args.output), exist_ok=True)
 		sys.stdout = open(args.output, 'a')
 
 	print('-' * 10)
@@ -156,9 +159,17 @@ if __name__ == '__main__':
 				## Output's contours
 				thresh = (outpt > t).float()
 
+				opening = cv2.morphologyEx( # opening removes little dots
+					np.array(to_pil(thresh)),
+					cv2.MORPH_OPEN,
+					np.ones((5, 5), dtype=np.uint8)
+				)
+
+				thresh = to_tensor(Image.fromarray(opening))
+
 				output_ctns = [
 					[bounding(c), surface(c), False]
-					for c in to_contours(np.array(to_pil(thresh)))
+					for c in to_contours(opening)
 				]
 
 				inter = target * thresh
@@ -195,6 +206,9 @@ if __name__ == '__main__':
 				pixel_wise[i, 0] += common
 				pixel_wise[i, 1] -= common
 				pixel_wise[i, 2] -= common
+
+				pixel_wise[i, 1] = max(pixel_wise[i, 1], 0)
+				pixel_wise[i, 2] = max(pixel_wise[i, 2], 0)
 
 	# Outputs
 

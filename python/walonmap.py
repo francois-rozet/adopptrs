@@ -79,18 +79,21 @@ if __name__ == '__main__':
 	from PIL import Image
 
 	from models import UNet, SegNet, MultiTaskUNet, MultiTaskSegNet
-	from dataset import to_pil, to_tensor, to_polygons
+	from dataset import to_pil, to_tensor, to_contours
+	from evaluate import surface
 
 	# Arguments
 	parser = argparse.ArgumentParser(description='Process WalOnMap tiles')
 	parser.add_argument('-d', '--destination', default=None, help='destination of the tiles')
-	parser.add_argument('-l', '--limit', default=-1, type=int, help='number of tiles to process')
+	parser.add_argument('-l', '--limit', type=int, default=-1, help='number of tiles to process')
 	parser.add_argument('-m', '--model', default='unet', choices=['unet', 'segnet'], help='network schema')
 	parser.add_argument('-multitask', default=False, action='store_true', help='multi-task network')
 	parser.add_argument('-n', '--network', help='network file')
 	parser.add_argument('-o', '--output', default='../products/json/walonmap.json', help='output VIA file')
 	parser.add_argument('-p', '--polygon', required=True, help='GeoJSON polygon file')
 	parser.add_argument('-t', '--tile', default='', help='tile prefix name')
+	parser.add_argument('-threshold', type=float, default=.5, help='threshold')
+	parser.add_argument('-min', type=int, default=256, help='minimal number of pixels')
 	args = parser.parse_args()
 
 	# Contour
@@ -150,7 +153,13 @@ if __name__ == '__main__':
 			inpt = inpt.to(device)
 
 			outpt = model(inpt).cpu()[0]
-			polygons = to_polygons(to_pil(outpt))
+
+			## Thresholding
+			outpt = (outpt > args.threshold).float()
+
+			## Filter out small contours
+			contours = to_contours(to_pil(outpt))
+			polygons = [c[:, 0, :].tolist() for c in contours if surface(c) > args.min]
 
 			if polygons:
 				basename = args.tile + '{}_{}.jpg'.format(row, col)
