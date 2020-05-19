@@ -12,7 +12,7 @@ More specifically, the goal is to detect, as accurately as possible, photovoltai
 
 The [PyTorch](https://pytorch.org/) library has been used to implement and train several neural networks [models](python/models.py) one of which is the well known [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/abs/1505.04597).
 
-> For a short description of the arguments of the scripts (`train.py`, `walonmap.py`, etc.), use `--help`.
+> For a short description of the arguments of the scripts (`train.py`, `evaluate.py`, etc.), use `--help`.
 
 ### Dependencies
 
@@ -34,7 +34,7 @@ conda env create -f environment.yml
 
 ### Networks
 
-The neural networks that have been implemented (cf. [`models.py`](python/models.py)) are *U-Net*, *SegNet* and [*Multi-Task*](https://arxiv.org/abs/1709.05932) versions of them.
+The neural networks that have been implemented (cf. [`models.py`](python/models.py)) are [*U-Net*](https://arxiv.org/abs/1505.04597), [*SegNet*](https://arxiv.org/abs/1511.00561) and [*Multi-Task*](https://arxiv.org/abs/1709.05932) versions of them.
 
 The legacy networks are trained with a *Dice loss* while the multi-task ones are trained with a *Multi-Task loss* (cf. [`criterions.py`](python/criterions.py)).
 
@@ -46,36 +46,43 @@ This improves greatly the *robustness* of the networks.
 
 ### Reproductibility
 
-In order to produce the networks and plots that are presented in the [notebooks](notebooks/), the script [`train.py`](python/train.py) was called (respectively) with the following arguments :
+In order to produce the networks and plots that are presented in the [notebooks](notebooks/), the scripts [`train.py`](python/train.py) and [`evaluate.py`](python/evaluate.py) were used. For instance, to train *Multi-Task U-Net* on `5` folds (except fold `0`) for `20` epochs and then evaluate it on fold `0` :
 
 ```bash
-python train.py -m unet -n unet -optim adam -o unet.txt -stat unet.csv
-python train.py -m segnet -n segnet -optim sgd -o segnet.txt -stat segnet.csv
-python train.py -m unet -multitask -n multiunet -optim adam -o multiunet.txt -stat multiunet.csv
-python train.py -m segnet -multitask -n multisegnet -optim sgd -o multisegnet.txt -stat multisegnet.csv
+python train.py -m unet -multitask -n multiunet_0 -e 20 -s multiunet.csv -k 5 -f 0
+python evaluate.py -m unet -multitask -n ../products/models/multiunet_0_020.pth -k 5 -f 0
 ```
 
-However, for the network that was selected for [fine-tuning](notebooks/tuning.ipynb), the arguments were
+> The output of `evaluate.py` is not very user friendly, it should be improved in a future version.
+
+Concerning the model used for [fine tuning](notebooks/tuning.ipynb), the images were twice upscaled and the whole Californian training set was used.
 
 ```bash
-python train.py -m unet -multitask -n multiunet_x2 -e 50 -s 450 460 -optim adam -scale 2 -o multiunet_x2.txt -stat multiunet_x2.csv
+python train.py -m unet -multitask -n multiunet_x2 -e 20 -scale 2 -s multiunet_x2.csv -k 0
 ```
 
-Then, the fine-tuned model was applied to the [Province of Liège](resources/walonmap/liege_province.geojson) with
+Then it was fine tuned for `10` more epochs on `661` [hand-annotated](resources/walonmap/via_liege_city.json) images.
 
 ```bash
-python walonmap.py -m multiunet_x2_029_20.pth -p liege_province.geojson -o liege_province_via.json
+python misc/download.py -d ../products/liege/ -i ../resources/walonmap/via_liege_city.json
+python train.py -m unet -multitask -n multiunet_x2 -e 10 -r 21 -scale 2 -batch 2 -special -p ../products/liege/ -i ../resources/walonmap/via_liege_city.json -s multiunet_x2.csv -k 0
+```
+
+> Note the use of the flag `-special` that removes images cropping and data augmentation.
+
+Afterwards, the fine-tuned model was applied to every images in the [Province of Liège](resources/walonmap/liege_province.geojson).
+
+```bash
+python walonmap.py -m unet -multitask -n ../products/models/multiunet_x2_030.pth -p ../resources/walonmap/liege_province.geojson -o ../products/json/liege_province_via.json
 ```
 
 Finally, the resulting `liege_province_via.json` file was *"summarized"* using
 
 ```bash
-python summarize.py -i liege_province_via.json -o liege_province.csv
+python summarize.py -i ../products/json/liege_province_via.json -o liege_province.csv
 ```
 
 which produced the [`liege_province.csv`](docs/resources/csv/liege_province.csv) file.
-
-> For readability purposes, the files' paths are not necessarily correct.
 
 ## Training data
 

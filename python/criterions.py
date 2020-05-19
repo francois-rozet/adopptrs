@@ -25,7 +25,7 @@ class MultiTaskLoss(nn.Module):
 	----------
 	Multi-Task Learning for Segmentation of Building Footprints with Deep Neural Networks
 	(Bischke et al., 2019)
-	https://arxiv.org/pdf/1709.05932.pdf
+	https://arxiv.org/abs/1709.05932
 	"""
 
 	def __init__(self, smooth=1., R=5):

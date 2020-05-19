@@ -72,8 +72,8 @@ if __name__ == '__main__':
 	parser.add_argument('-k', type=int, default=5, help='the number of folds')
 	parser.add_argument('-m', '--model', default='unet', choices=['unet', 'segnet'], help='network schema')
 	parser.add_argument('-multitask', default=False, action='store_true', help='multi-task network')
-	parser.add_argument('-n', '--network', default=None, help='network file')
-	parser.add_argument('-o', '--output', default=None, help='standard output file')
+	parser.add_argument('-n', '--network', help='network file')
+	parser.add_argument('-o', '--output', default=None, help='standard output file') # should be improved to csv
 	parser.add_argument('-p', '--path', default='../resources/california/', help='path to resources')
 	parser.add_argument('-min', type=int, default=64, help='minimal number of pixels')
 	args = parser.parse_args()

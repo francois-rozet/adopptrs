@@ -73,15 +73,18 @@ if __name__ == '__main__':
 	parser.add_argument('-r', '--resume', type=int, default=1, help='epoch at which to resume')
 	parser.add_argument('-s', '--stat', default='../products/csv/statistics.csv', help='convergence statistics file')
 	parser.add_argument('-scale', type=int, default=1, help='scale of the images')
+	parser.add_argument('-batch', type=int, default=5, help='batch size')
 	parser.add_argument('-optim', default='adam', choices=['adam', 'sgd'], help='optimizer')
 	parser.add_argument('-lrate', type=float, default=1e-3, help='learning rate')
 	parser.add_argument('-wdecay', type=float, default=1e-4, help='weight decay')
 	parser.add_argument('-momentum', type=float, default=0.9, help='momentum of SGD')
+	parser.add_argument('-special', default=False, action='store_true', help='special mode')
 	args = parser.parse_args()
 
 	# Output file
 	if args.output is not None:
-		os.makedirs(os.path.dirname(args.output), exist_ok=True)
+		if os.path.dirname(args.output):
+			os.makedirs(os.path.dirname(args.output), exist_ok=True)
 		sys.stdout = open(args.output, 'a')
 
 	print('-' * 10)
@@ -99,18 +102,20 @@ if __name__ == '__main__':
 	else:
 		train_via = via
 
-	trainset = ToTensor(
-		RandomTranspose(RandomFilter(ColorJitter(
-			Scale(VIADataset(train_via, args.path, shuffle=True, alt=1), args.scale)
-			if args.scale > 1 else
-			VIADataset(train_via, args.path, shuffle=True, alt=1)
-		)))
-	)
+	if args.special:
+		trainset = VIADataset(train_via, args.path, shuffle=True, size=None)
+		trainset = RandomTranspose(trainset)
+	else:
+		trainset = VIADataset(train_via, args.path, shuffle=True, alt=1)
+		trainset = Scale(trainset, args.scale) if args.scale > 1 else trainset
+		trainset = RandomTranspose(RandomFilter(ColorJitter(trainset)))
+
+	trainset = ToTensor(trainset)
 
 	print('Training size = {}'.format(len(trainset)))
 
 	# Dataloaders
-	trainloader = DataLoader(trainset, batch_size=5, pin_memory=True)
+	trainloader = DataLoader(trainset, batch_size=args.batch, pin_memory=True)
 
 	# Model
 	if args.model == 'unet':
@@ -153,7 +158,8 @@ if __name__ == '__main__':
 		args.resume = 1
 
 	# Convergence statistics
-	os.makedirs(os.path.dirname(args.stat), exist_ok=True)
+	if os.path.dirname(args.stat):
+		os.makedirs(os.path.dirname(args.stat), exist_ok=True)
 
 	if not os.path.exists(args.stat):
 		with open(args.stat, 'w', newline='') as f:

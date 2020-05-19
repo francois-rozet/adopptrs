@@ -40,7 +40,7 @@ class SegNet(nn.Module):
 	----------
 	SegNet: A Deep Convolutional Encoder-Decoder Architecture for Image Segmentation
 	(Badrinarayanan et al., 2016)
-	https://arxiv.org/pdf/1511.00561.pdf
+	https://arxiv.org/abs/1511.00561
 	"""
 
 	def __init__(self, in_channels, out_channels):
@@ -96,7 +96,7 @@ class MultiTaskSegNet(SegNet):
 	----------
 	Multi-Task Learning for Segmentation of Building Footprints with Deep Neural Networks
 	(Bischke et al., 2019)
-	https://arxiv.org/pdf/1709.05932.pdf
+	https://arxiv.org/abs/1709.05932
 	"""
 
 	def __init__(self, in_channels, out_channels, R):

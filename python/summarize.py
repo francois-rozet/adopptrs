@@ -50,7 +50,8 @@ if __name__ == '__main__':
 	via = VIA.load(args.input)
 
 	# Panels
-	os.makedirs(os.path.dirname(args.output), exist_ok=True)
+	if os.path.dirname(args.output):
+		os.makedirs(os.path.dirname(args.output), exist_ok=True)
 
 	with open(args.output, 'w', newline='') as f:
 		writer = csv.writer(f)

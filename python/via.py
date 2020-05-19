@@ -28,7 +28,8 @@ def load(filename):
 
 
 def dump(via, filename, path='./', indent=None):
-	os.makedirs(os.path.dirname(filename), exist_ok=True)
+	if os.path.dirname(filename):
+		os.makedirs(os.path.dirname(filename), exist_ok=True)
 	with open(filename, 'w') as f:
 		json.dump(format(via, path), f, indent=indent)
 
