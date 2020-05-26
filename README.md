@@ -6,6 +6,8 @@ Therefore, this project, named *Automatic Detection Of Photovoltaic Panels Throu
 
 More specifically, the goal is to detect, as accurately as possible, photovoltaic panels in the [WalOnMap][walonmap] orthorectified images in the [Province of Liège](resources/walonmap/liege_province.geojson).
 
+For further explanations and technicalities, please see the project [report](latex/main.pdf).
+
 > All the photovoltaic installations that have been detected, can be visualized at [francois-rozet.github.io/adopptrs](https://francois-rozet.github.io/adopptrs/).
 
 ## Implementation
