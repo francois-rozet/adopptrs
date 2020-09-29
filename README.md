@@ -20,7 +20,7 @@ The [PyTorch](https://pytorch.org/) library has been used to implement and train
 
 If you wish to run the scripts or the [Jupyter](https://jupyter.org/) notebook(s), you will need to install several `Python` packages including `jupyter`, `torch`, `torchvision`, `opencv`, `matplotlib` and their dependencies.
 
-To do so safely, one should create a new environement :
+To do so safely, one should create a new environment :
 
 ```bash
 virtualenv ~/adopptrs -p python3
@@ -28,10 +28,11 @@ source ~/adopptrs/bin/activate
 pip3 install -r requirements.txt -y
 ```
 
-or with `Anaconda`
+or with the `conda` package manager
 
 ```bash
 conda env create -f environment.yml
+conda activate adopptrs
 ```
 
 ### Networks
