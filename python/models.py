@@ -12,25 +12,23 @@ import torch
 import torch.nn as nn
 
 
-#############
-# Functions #
-#############
-
-def double_conv(in_channels, out_channels, kernel_size=3, padding=1):
-	'''Generic double convolution layer'''
-	return nn.Sequential(
-		nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding),
-		nn.BatchNorm2d(out_channels),
-		nn.ReLU(inplace=True),
-		nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding),
-		nn.BatchNorm2d(out_channels),
-		nn.ReLU(inplace=True)
-	)
-
-
 #########
 # Class #
 #########
+
+class DoubleConv(nn.Sequential):
+	'''Double convolution layer'''
+
+	def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+		super().__init__(
+			nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, padding=padding),
+			nn.BatchNorm2d(out_channels),
+			nn.ReLU(inplace=True),
+			nn.Conv2d(out_channels, out_channels, kernel_size, stride=stride, padding=padding),
+			nn.BatchNorm2d(out_channels),
+			nn.ReLU(inplace=True)
+		)
+
 
 class SegNet(nn.Module):
 	"""
@@ -43,47 +41,52 @@ class SegNet(nn.Module):
 	https://arxiv.org/abs/1511.00561
 	"""
 
-	def __init__(self, in_channels, out_channels):
+	def __init__(self, in_channels, out_channels, depth=2):
 		super().__init__()
 
-		self.first = double_conv(in_channels, 64)
-
-		self.down1 = double_conv(64, 128)
-		self.down2 = double_conv(128, 128)
-
-		self.maxpool = nn.MaxPool2d(2, return_indices=True)
-		self.upsample = nn.MaxUnpool2d(2)
-
-		self.up2 = double_conv(128, 128)
-		self.up1 = double_conv(128, 64)
-
-		self.last = nn.Sequential(
-			nn.Conv2d(64, out_channels, 1),
-			nn.Sigmoid()
+		self.downs = nn.ModuleList(
+			[DoubleConv(in_channels, 64)] + [
+				DoubleConv(64 * (2 ** i), 128 * (2 ** i))
+				for i in range(depth)
+			]
 		)
 
+		self.maxpool = nn.MaxPool2d(2, return_indices=True, ceil_mode=True)
+		self.upsample = nn.MaxUnpool2d(2)
+
+		self.ups = nn.ModuleList(
+			[
+				DoubleConv(128 * (2 ** i), 64 * (2 ** i))
+				for i in reserved(range(depth))
+			]
+		)
+
+		self.last = nn.Conv2d(64, out_channels, 1)
+		self.sigmoid = nn.Sigmoid()
+
 	def head(self, x):
-		return self.last(x)
+		x = self.last(x)
+
+		return self.sigmoid(x)
 
 	def forward(self, x):
+		indexes = []
+		shapes = []
+
 		# Downhill
-		x = self.first(x)
-		x, idx_1 = self.maxpool(x)
+		for down in self.downs[:-1]:
+			x = down(x)
+			indexes.append(None)
+			shapes.append(x.shape[-2:])
+			x, indexes[-1] = self.maxpool(x)
 
-		x = self.down1(x)
-		x, idx_2 = self.maxpool(x)
-
-		x = self.down2(x)
-		x, idx_3 = self.maxpool(x)
+		x = self.downs[-1](x)
 
 		# Uphill
-		x = self.upsample(x, idx_3)
-		x = self.up2(x)
-
-		x = self.upsample(x, idx_2)
-		x = self.up1(x)
-
-		x = self.upsample(x, idx_1)
+		for up in self.ups:
+			x = self.upsample(x, indexes.pop())
+			x = x[:, :, :shapes[-1][0], :shapes.pop()[1]]
+			x = up(x)
 
 		return self.head(x)
 
@@ -105,16 +108,15 @@ class MultiTaskSegNet(SegNet):
 		self.dist = nn.Conv2d(64, R * 2 + 1, 1)
 		self.relu = nn.ReLU(inplace=True)
 
-		self.last = nn.Sequential(
-			nn.Conv2d(64 + self.dist.out_channels, out_channels, 1),
-			nn.Sigmoid()
-		)
+		self.last = nn.Conv2d(64 + self.dist.out_channels, out_channels, 1)
+		self.sigmoid = nn.Sigmoid()
 
 	def head(self, x):
 		dist = self.dist(x)
 
 		x = torch.cat([x, self.relu(dist)], dim=1)
 		x = self.last(x)
+		x = self.sigmoid(x)
 
 		return (x, dist) if self.training else x
 
@@ -130,64 +132,53 @@ class UNet(nn.Module):
 	https://arxiv.org/abs/1505.04597
 	"""
 
-	def __init__(self, in_channels, out_channels):
+	def __init__(self, in_channels, out_channels, depth=4):
 		super().__init__()
 
-		self.first = double_conv(in_channels, 64)
-
-		self.down1 = double_conv(64, 128)
-		self.down2 = double_conv(128, 256)
-		self.down3 = double_conv(256, 512)
-		self.down4 = double_conv(512, 1024)
-
-		self.maxpool = nn.MaxPool2d(2)
-		self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-
-		self.up4 = double_conv(512 + 1024, 512)
-		self.up3 = double_conv(256 + 512, 256)
-		self.up2 = double_conv(128 + 256, 128)
-		self.up1 = double_conv(128 + 64, 64)
-
-		self.last = nn.Sequential(
-			nn.Conv2d(64, out_channels, 1),
-			nn.Sigmoid()
+		self.downs = nn.ModuleList(
+			[DoubleConv(in_channels, 64)] + [
+				DoubleConv(64 * (2 ** i), 128 * (2 ** i))
+				for i in range(depth)
+			]
 		)
 
+		self.maxpool = nn.MaxPool2d(2, ceil_mode=True)
+		self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
+
+		self.ups = nn.ModuleList([
+			DoubleConv((64 + 128) * (2 ** i), 64 * (2 ** i))
+			for i in reversed(range(depth))
+		])
+
+		self.last = nn.Conv2d(64, out_channels, 1)
+		self.sigmoid = nn.Sigmoid()
+
 	def head(self, x):
-		return self.last(x)
+		x = self.last(x)
+
+		return self.sigmoid(x)
 
 	def forward(self, x):
-		# Downhill
-		d1 = self.first(x)
+		features = []
+		shapes = []
 
-		x = self.maxpool(d1)
-		d2 = self.down1(x)
+        # Downhill
+        for down in self.downs[:-1]:
+            x = down(x)
+            features.append(x)
+            shapes.append(x.shape[-2:])
+            x = self.maxpool(x)
 
-		x = self.maxpool(d2)
-		d3 = self.down2(x)
-
-		x = self.maxpool(d3)
-		d4 = self.down3(x)
-
-		x = self.maxpool(d4)
-		x = self.down4(x)
+        x = self.downs[-1](x)
 
 		# Uphill
-		x = self.upsample(x)
-		x = torch.cat([x, d4], dim=1)
-		x = self.up4(x)
-
-		x = self.upsample(x)
-		x = torch.cat([x, d3], dim=1)
-		x = self.up3(x)
-
-		x = self.upsample(x)
-		x = torch.cat([x, d2], dim=1)
-		x = self.up2(x)
-
-		x = self.upsample(x)
-		x = torch.cat([x, d1], dim=1)
-		x = self.up1(x)
+		for up in self.ups:
+			x = self.upsample(x)
+			x = torch.cat([
+				x[:, :, :shapes[-1][0], :shapes.pop()[1]],
+				features.pop()
+			], dim=1)
+			x = up(x)
 
 		return self.head(x)
 
@@ -203,15 +194,14 @@ class MultiTaskUNet(UNet):
 		self.dist = nn.Conv2d(64, R * 2 + 1, 1)
 		self.relu = nn.ReLU(inplace=True)
 
-		self.last = nn.Sequential(
-			nn.Conv2d(64 + self.dist.out_channels, out_channels, 1),
-			nn.Sigmoid()
-		)
+		self.last = nn.Conv2d(64 + self.dist.out_channels, out_channels, 1)
+		self.sigmoid = nn.Sigmoid()
 
 	def head(self, x):
 		dist = self.dist(x)
 
 		x = torch.cat([x, self.relu(dist)], dim=1)
 		x = self.last(x)
+		x = self.sigmoid(x)
 
 		return (x, dist) if self.training else x
